@@ -1,9 +1,12 @@
+import dotenv from 'dotenv';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Command, Option } from 'commander';
 import { walkFiles } from './walker.ts';
 import { chunkFile } from './chunker/index.ts';
 import { getLanguage } from './languages.ts';
+
+dotenv.config();
 
 async function indexAction(targetDir: string): Promise<void> {
   const resolvedDir = path.resolve(targetDir);
