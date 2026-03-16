@@ -21,6 +21,8 @@ import {
 import { ensureCollection, upsertPoints, deletePoints } from './lib/store.ts';
 import type { UpsertPoint } from './lib/store.ts';
 import { semanticSearch } from './lib/search.ts';
+import { grepSearch } from './lib/grep.ts';
+import { mergeResults } from './lib/merge.ts';
 import { registerShutdownHandlers, onShutdown } from './lib/shutdown.ts';
 import { createLogger } from './utils/logger.ts';
 
@@ -232,26 +234,37 @@ async function searchAction(
   }
 
   const resolvedDir = path.resolve(options.path);
+  const mode = options.mode;
 
-  if (options.mode !== 'semantic') {
-    log.info(`Mode "${options.mode}" not yet implemented. Using semantic search.`);
-  }
-
-  try {
-    initDb(resolvedDir);
-    await ensureCollection();
-  } catch (err: unknown) {
-    log.error(
-      `Failed to initialize: ${err instanceof Error ? err.message : err}. Have you indexed this directory first?`,
-    );
-    closeDb();
-    process.exitCode = 1;
-    return;
+  // Semantic and hybrid modes need Qdrant + SQLite
+  if (mode === 'semantic' || mode === 'hybrid') {
+    try {
+      initDb(resolvedDir);
+      await ensureCollection();
+    } catch (err: unknown) {
+      log.error(
+        `Failed to initialize: ${err instanceof Error ? err.message : err}. Have you indexed this directory first?`,
+      );
+      closeDb();
+      process.exitCode = 1;
+      return;
+    }
   }
 
   let results;
   try {
-    results = await semanticSearch(query, options.limit);
+    if (mode === 'semantic') {
+      results = await semanticSearch(query, options.limit);
+    } else if (mode === 'grep') {
+      results = await grepSearch(query, resolvedDir, options.limit);
+    } else {
+      // hybrid: run both in parallel, merge with RRF
+      const [semanticResults, grepResults] = await Promise.all([
+        semanticSearch(query, options.limit),
+        grepSearch(query, resolvedDir, options.limit),
+      ]);
+      results = mergeResults(semanticResults, grepResults, options.limit);
+    }
   } catch (err: unknown) {
     log.error(`Search failed: ${err instanceof Error ? err.message : err}`);
     process.exitCode = 1;
@@ -263,13 +276,16 @@ async function searchAction(
     return;
   }
 
-  console.log(`\n  ${results.length} results for "${query}"\n`);
+  console.log(`\n  ${results.length} results for "${query}" [${mode}]\n`);
 
   for (const result of results) {
     const relativePath = path.relative(resolvedDir, result.filePath);
-    const score = (result.score * 100).toFixed(1);
+    const scoreLabel =
+      mode === 'semantic'
+        ? `${(result.score * 100).toFixed(1)}%`
+        : `score: ${result.score.toFixed(4)}`;
 
-    console.log(`  ${relativePath}:${result.lineStart}-${result.lineEnd}  (${score}% match)`);
+    console.log(`  ${relativePath}:${result.lineStart}-${result.lineEnd}  (${scoreLabel})`);
     console.log('  ' + '─'.repeat(60));
 
     const lines = result.code.split('\n');
@@ -312,7 +328,7 @@ program
   .addOption(
     new Option('-m, --mode <mode>', 'search mode')
       .choices(['semantic', 'grep', 'hybrid'])
-      .default('semantic'),
+      .default('hybrid'),
   )
   .option('-l, --limit <number>', 'max results to return', '10')
   .option('-p, --path <path>', 'target directory to search', '.')
