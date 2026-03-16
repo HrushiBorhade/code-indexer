@@ -29,7 +29,11 @@ async function isBinary(filePath: string): Promise<boolean> {
     const { bytesRead } = await handle.read(buffer, 0, 512, 0);
     if (bytesRead === 0) return false;
     return buffer.subarray(0, bytesRead).includes(0x00);
-  } catch {
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') {
+      console.warn(`[walker] Could not read ${filePath} for binary check (${code ?? err})`);
+    }
     return true;
   } finally {
     await handle?.close();
@@ -40,11 +44,14 @@ async function discoverFiles(rootDir: string): Promise<string[]> {
   try {
     const { stdout } = await execFileAsync(
       'git',
-      ['ls-files', '--cached', '--others', '--exclude-standard'],
+      ['ls-files', '--cached', '--others', '--exclude-standard', '.'],
       { cwd: rootDir, maxBuffer: MAX_BUFFER },
     );
     return stdout.split('\n').filter(Boolean);
-  } catch {
+  } catch (err: unknown) {
+    console.warn(
+      `[walker] git ls-files failed, falling back to fast-glob (.gitignore rules will NOT apply): ${err instanceof Error ? err.message : err}`,
+    );
     const files = await fg('**/*', {
       cwd: rootDir,
       ignore: FALLBACK_IGNORE,

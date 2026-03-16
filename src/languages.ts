@@ -7,13 +7,14 @@ interface LanguageEntry {
 }
 
 const LANGUAGES: LanguageEntry[] = [
-  { name: 'typescript', type: 'ast', extensions: ['.ts', '.tsx'] },
+  { name: 'typescript', type: 'ast', extensions: ['.ts'] },
+  { name: 'tsx', type: 'ast', extensions: ['.tsx'] },
   { name: 'javascript', type: 'ast', extensions: ['.js', '.jsx', '.mjs', '.cjs'] },
   { name: 'python', type: 'ast', extensions: ['.py'] },
   { name: 'rust', type: 'ast', extensions: ['.rs'] },
   { name: 'go', type: 'ast', extensions: ['.go'] },
   { name: 'css', type: 'ast', extensions: ['.css'] },
-  { name: 'graphql', type: 'ast', extensions: ['.graphql', '.gql'] },
+  { name: 'graphql', type: 'text', extensions: ['.graphql', '.gql'] },
   { name: 'markdown', type: 'text', extensions: ['.md', '.mdx'] },
   { name: 'json', type: 'text', extensions: ['.json'] },
   { name: 'yaml', type: 'text', extensions: ['.yaml', '.yml'] },
