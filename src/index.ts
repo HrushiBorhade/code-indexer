@@ -7,6 +7,20 @@ import { chunkFile } from './chunker/index.ts';
 import type { Chunk } from './chunker/types.ts';
 import { getLanguage } from './lib/languages.ts';
 import { embedChunks } from './lib/embedder.ts';
+import { hashFile, hashString } from './lib/hash.ts';
+import {
+  initDb,
+  closeDb,
+  getFileHash,
+  setFileHash,
+  deleteFileHash,
+  getAllFileHashes,
+  upsertChunk,
+  deleteChunksByFile,
+} from './lib/db.ts';
+import { ensureCollection, upsertPoints, deletePoints } from './lib/store.ts';
+import type { UpsertPoint } from './lib/store.ts';
+import { registerShutdownHandlers, onShutdown } from './lib/shutdown.ts';
 import { createLogger } from './utils/logger.ts';
 
 const log = createLogger('index');
@@ -30,6 +44,12 @@ async function indexAction(targetDir: string): Promise<void> {
   log.info(`Scanning ${resolvedDir}...`);
   const startTime = Date.now();
 
+  // --- Init persistence layer ---
+  initDb(resolvedDir);
+  onShutdown(closeDb);
+  await ensureCollection();
+
+  // --- Walk files ---
   const files = await walkFiles(resolvedDir);
   if (files.length === 0) {
     log.info('No supported files found.');
@@ -50,12 +70,54 @@ async function indexAction(targetDir: string): Promise<void> {
     .join(', ');
 
   log.info(`Found ${files.length} files (${breakdown})`);
-  log.info('Chunking files...');
 
+  // --- Hash check: skip unchanged files ---
+  const changedFiles: string[] = [];
+  for (const file of files) {
+    const currentHash = await hashFile(file);
+    const cached = getFileHash(file);
+    if (cached && cached.sha256 === currentHash) continue;
+    changedFiles.push(file);
+  }
+
+  // --- Detect deleted files ---
+  const currentFileSet = new Set(files);
+  const storedHashes = getAllFileHashes();
+  const deletedFiles = storedHashes.filter((row) => !currentFileSet.has(row.file_path));
+
+  if (deletedFiles.length > 0) {
+    log.info(`Removing ${deletedFiles.length} deleted files from index...`);
+    for (const row of deletedFiles) {
+      const oldChunks = deleteChunksByFile(row.file_path);
+      if (oldChunks.length > 0) {
+        await deletePoints(oldChunks.map((c) => c.qdrant_id));
+      }
+      deleteFileHash(row.file_path);
+    }
+  }
+
+  if (changedFiles.length === 0) {
+    log.info(`All ${files.length} files unchanged. Nothing to index.`);
+    log.info(`Done in ${Date.now() - startTime}ms`);
+    return;
+  }
+
+  log.info(
+    `${changedFiles.length} changed files to index (${files.length - changedFiles.length} unchanged, skipped)`,
+  );
+
+  // --- Chunk changed files ---
+  log.info('Chunking files...');
   const allChunks: Chunk[] = [];
   let erroredFiles = 0;
 
-  for (const file of files) {
+  for (const file of changedFiles) {
+    // Remove old chunks for this file before re-chunking
+    const oldChunks = deleteChunksByFile(file);
+    if (oldChunks.length > 0) {
+      await deletePoints(oldChunks.map((c) => c.qdrant_id));
+    }
+
     try {
       const chunks = await chunkFile(file);
       allChunks.push(...chunks);
@@ -65,7 +127,7 @@ async function indexAction(targetDir: string): Promise<void> {
     }
   }
 
-  log.info(`Created ${allChunks.length} chunks from ${files.length - erroredFiles} files`);
+  log.info(`Created ${allChunks.length} chunks from ${changedFiles.length - erroredFiles} files`);
   if (erroredFiles > 0) {
     log.warn(`${erroredFiles} files failed to chunk (see errors above)`);
   }
@@ -76,6 +138,7 @@ async function indexAction(targetDir: string): Promise<void> {
     return;
   }
 
+  // --- Embed ---
   log.info('Embedding chunks...');
   let embeddings: number[][];
   try {
@@ -102,7 +165,39 @@ async function indexAction(targetDir: string): Promise<void> {
 
   log.info(`Generated ${embeddings.length} embeddings (${embeddings[0].length} dimensions each)`);
 
-  // TODO: Phase 3 — store embeddings in Qdrant + SQLite cache
+  // --- Upsert to Qdrant ---
+  log.info('Upserting to Qdrant...');
+  const points: UpsertPoint[] = allChunks.map((chunk, i) => ({
+    embedding: embeddings[i],
+    payload: {
+      filePath: chunk.filePath,
+      lineStart: chunk.lineStart,
+      lineEnd: chunk.lineEnd,
+      language: chunk.language,
+      chunkHash: hashString(chunk.content),
+    },
+  }));
+
+  const qdrantIds = await upsertPoints(points);
+
+  // --- Update SQLite cache ---
+  for (let i = 0; i < allChunks.length; i++) {
+    const chunk = allChunks[i];
+    upsertChunk(
+      hashString(chunk.content),
+      qdrantIds[i],
+      chunk.filePath,
+      chunk.lineStart,
+      chunk.lineEnd,
+    );
+  }
+
+  // Update file hashes for all changed files (including ones that errored — they'll re-process next run)
+  for (const file of changedFiles) {
+    const currentHash = await hashFile(file);
+    setFileHash(file, currentHash);
+  }
+
   log.info(`Done in ${Date.now() - startTime}ms`);
   if (erroredFiles > 0) process.exitCode = 1;
 }
@@ -117,6 +212,9 @@ function watchAction(targetDir: string): void {
   const resolvedDir = path.resolve(targetDir);
   watchLog.info(`TODO: watch ${resolvedDir} for changes (Phase 6)`);
 }
+
+// --- Register shutdown handlers before CLI parsing ---
+registerShutdownHandlers();
 
 const program = new Command();
 
