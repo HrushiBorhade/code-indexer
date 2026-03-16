@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { getLanguage } from '../languages.ts';
+import { getLanguage } from '../lib/languages.ts';
 import type { Chunk } from './types.ts';
 import { chunkAST } from './ast.ts';
 import { chunkMarkdown } from './markdown.ts';

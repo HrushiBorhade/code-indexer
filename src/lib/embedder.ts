@@ -1,6 +1,6 @@
-import env from './env.ts';
-import type { Chunk } from './chunker/types.ts';
-import { createLogger } from './utils/logger.ts';
+import env from '../config/env.ts';
+import type { Chunk } from '../chunker/types.ts';
+import { createLogger } from '../utils/logger.ts';
 
 const log = createLogger('embedder');
 
