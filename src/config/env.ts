@@ -1,17 +1,23 @@
+import dotenv from 'dotenv';
 import { z } from 'zod';
 
+// Load .env before validation — must happen in this file so any importer gets env populated
+const dotenvResult = dotenv.config();
+if (dotenvResult.error && (dotenvResult.error as NodeJS.ErrnoException).code !== 'ENOENT') {
+  console.warn(`[env] Warning: Failed to parse .env file: ${dotenvResult.error.message}`);
+}
+
 // Treat empty strings as undefined (common with dotenv placeholders like QDRANT_URL=)
-const emptyToUndefined = (val: unknown) => (val === '' ? undefined : val);
+function emptyToUndefined(val: unknown) {
+  return val === '' ? undefined : val;
+}
 
 const envSchema = z.object({
-  // Embedding provider: openai or voyage
   EMBEDDING_PROVIDER: z.enum(['openai', 'voyage']).default('openai'),
 
-  // API keys — only the active provider's key is required (validated at runtime in embedder)
   VOYAGE_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   OPENAI_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
 
-  // Qdrant (Phase 3)
   QDRANT_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
   QDRANT_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
 
