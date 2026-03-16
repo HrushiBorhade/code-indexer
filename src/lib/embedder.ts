@@ -8,6 +8,7 @@ interface EmbeddingProvider {
   name: string;
   apiUrl: string;
   model: string;
+  dimension: number;
   apiKey: string;
   batchSize: number;
   maxConcurrency: number;
@@ -50,6 +51,7 @@ function getProvider(): EmbeddingProvider {
       name: 'openai',
       apiUrl: 'https://api.openai.com/v1/embeddings',
       model: 'text-embedding-3-small',
+      dimension: 1536,
       apiKey,
       batchSize: 128,
       maxConcurrency: 3,
@@ -71,6 +73,7 @@ function getProvider(): EmbeddingProvider {
     name: 'voyage',
     apiUrl: 'https://api.voyageai.com/v1/embeddings',
     model: 'voyage-code-3',
+    dimension: 1024,
     apiKey,
     batchSize: 8,
     maxConcurrency: 1,
