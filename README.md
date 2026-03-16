@@ -149,6 +149,9 @@ src/
 │   ├── hash.ts            # SHA-256 file and string hashing
 │   ├── db.ts              # SQLite cache (better-sqlite3, WAL mode)
 │   ├── store.ts           # Qdrant vector store (upsert, delete, search)
+│   ├── search.ts          # Semantic search orchestrator
+│   ├── grep.ts            # Ripgrep text search wrapper
+│   ├── merge.ts           # RRF fusion algorithm
 │   └── shutdown.ts        # Graceful shutdown (SIGINT/SIGTERM handler)
 ├── chunker/               # Modular chunking strategies
 │   ├── index.ts           # Router — dispatches to correct strategy
@@ -200,8 +203,15 @@ src/
   - [x] Graceful shutdown (SIGINT/SIGTERM)
   - [x] Incremental indexing (skip unchanged files)
   - [x] Deleted file cleanup
-- [ ] Phase 4: Semantic search
-- [ ] Phase 5: Hybrid search (semantic + ripgrep + RRF)
+- [x] Phase 4: Semantic search
+  - [x] Search orchestrator (embed query → Qdrant top-K → read code from disk)
+  - [x] Parallel file reads for result snippets
+  - [x] CLI search command with --limit, --path, --mode options
+- [x] Phase 5: Hybrid search (semantic + ripgrep + RRF)
+  - [x] Ripgrep wrapper (execFile, JSON output, --fixed-strings, --smart-case)
+  - [x] RRF fusion algorithm (k=60, deduplication, combined scoring)
+  - [x] Three modes: semantic, grep, hybrid (default)
+  - [x] Parallel execution of semantic + grep in hybrid mode
 - [ ] Phase 6: Incremental sync (Merkle tree)
 - [ ] Web UI: GitHub OAuth, repo explorer, chat sidebar
 - [ ] Worker-based indexing via job queues (BullMQ + Redis)
