@@ -7,10 +7,10 @@ if (dotenvResult.error) {
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Command, Option } from 'commander';
-import './env.ts';
-import { walkFiles } from './walker.ts';
+import './config/env.ts';
+import { walkFiles } from './lib/walker.ts';
 import { chunkFile } from './chunker/index.ts';
-import { getLanguage } from './languages.ts';
+import { getLanguage } from './lib/languages.ts';
 import { createLogger } from './utils/logger.ts';
 
 const log = createLogger('index');

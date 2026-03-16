@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
-vi.mock('./env.ts', () => ({
+vi.mock('../config/env.ts', () => ({
   default: { VOYAGE_API_KEY: 'test-key', NODE_ENV: 'test' },
 }));
 
 import { embedBatch, embedChunks, embedQuery, BATCH_SIZE, MAX_CONCURRENCY } from './embedder.ts';
-import type { Chunk } from './chunker/types.ts';
+import type { Chunk } from '../chunker/types.ts';
 
 function makeChunk(content: string): Chunk {
   return {

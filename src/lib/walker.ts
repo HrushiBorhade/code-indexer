@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import fg from 'fast-glob';
 import { getLanguage } from './languages.ts';
-import { createLogger } from './utils/logger.ts';
+import { createLogger } from '../utils/logger.ts';
 
 const log = createLogger('walker');
 
