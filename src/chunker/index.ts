@@ -13,15 +13,7 @@ async function chunkFile(filePath: string): Promise<Chunk[]> {
   const entry = getLanguage(filePath);
   if (!entry) return [];
 
-  let source: string;
-  try {
-    source = await fs.readFile(filePath, 'utf-8');
-  } catch (err: unknown) {
-    console.error(
-      `[chunker] Failed to read ${filePath}: ${(err as NodeJS.ErrnoException).code ?? err}`,
-    );
-    return [];
-  }
+  const source = await fs.readFile(filePath, 'utf-8');
 
   if (source.trim().length === 0) return [];
 
