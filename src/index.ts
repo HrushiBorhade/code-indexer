@@ -1,16 +1,13 @@
-import dotenv from 'dotenv';
-const dotenvResult = dotenv.config();
-if (dotenvResult.error) {
-  console.warn(`[env] Warning: Failed to load .env file: ${dotenvResult.error.message}`);
-}
-
+import './config/dotenv.ts';
+import './config/env.ts';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Command, Option } from 'commander';
-import './config/env.ts';
 import { walkFiles } from './lib/walker.ts';
 import { chunkFile } from './chunker/index.ts';
+import type { Chunk } from './chunker/types.ts';
 import { getLanguage } from './lib/languages.ts';
+import { embedChunks } from './lib/embedder.ts';
 import { createLogger } from './utils/logger.ts';
 
 const log = createLogger('index');
@@ -58,25 +55,59 @@ async function indexAction(targetDir: string): Promise<void> {
   log.info(`Found ${files.length} files (${breakdown})`);
   log.info('Chunking files...');
 
-  let totalChunks = 0;
+  const allChunks: Chunk[] = [];
   let erroredFiles = 0;
 
   for (const file of files) {
     try {
       const chunks = await chunkFile(file);
-      totalChunks += chunks.length;
+      allChunks.push(...chunks);
     } catch (err: unknown) {
       erroredFiles++;
       log.error(`Failed to chunk ${file}: ${err instanceof Error ? err.message : err}`);
     }
   }
 
-  log.info(`Created ${totalChunks} chunks from ${files.length} files`);
+  log.info(`Created ${allChunks.length} chunks from ${files.length - erroredFiles} files`);
   if (erroredFiles > 0) {
     log.warn(`${erroredFiles} files failed to chunk (see errors above)`);
-    process.exitCode = 1;
   }
+
+  if (allChunks.length === 0) {
+    log.warn('No chunks to embed.');
+    if (erroredFiles > 0) process.exitCode = 1;
+    return;
+  }
+
+  log.info('Embedding chunks...');
+  let embeddings: number[][];
+  try {
+    embeddings = await embedChunks(allChunks);
+  } catch (err: unknown) {
+    log.error(`Embedding failed: ${err instanceof Error ? err.message : err}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  if (embeddings.length === 0) {
+    log.error('Embedding returned no results.');
+    process.exitCode = 1;
+    return;
+  }
+
+  if (embeddings.length !== allChunks.length) {
+    log.error(
+      `Embedding count mismatch: got ${embeddings.length} embeddings for ${allChunks.length} chunks`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  log.info(`Generated ${embeddings.length} embeddings (${embeddings[0].length} dimensions each)`);
+
+  // TODO: Phase 3 — store embeddings in Qdrant + SQLite cache
   log.info(`Done in ${Date.now() - startTime}ms`);
+  if (erroredFiles > 0) process.exitCode = 1;
 }
 
 function searchAction(query: string, options: { mode: string }): void {

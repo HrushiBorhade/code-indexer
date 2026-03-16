@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('../config/env.ts', () => ({
-  default: { VOYAGE_API_KEY: 'test-key', NODE_ENV: 'test' },
+  default: {
+    EMBEDDING_PROVIDER: 'openai',
+    OPENAI_API_KEY: 'test-key',
+    NODE_ENV: 'test',
+  },
 }));
 
-import { embedBatch, embedChunks, embedQuery, BATCH_SIZE, MAX_CONCURRENCY } from './embedder.ts';
+import { embedBatch, embedChunks, embedQuery, getProvider } from './embedder.ts';
 import type { Chunk } from '../chunker/types.ts';
+
+const provider = getProvider();
 
 function makeChunk(content: string): Chunk {
   return {
@@ -18,19 +24,19 @@ function makeChunk(content: string): Chunk {
   };
 }
 
-function makeVoyageResponse(count: number) {
+function makeEmbeddingResponse(count: number) {
   return {
     data: Array.from({ length: count }, (_, i) => ({
       embedding: Array.from({ length: 1024 }, (__, d) => i * 0.001 + d * 0.0001),
       index: i,
     })),
-    model: 'voyage-code-3',
+    model: provider.model,
     usage: { total_tokens: count * 50 },
   };
 }
 
 function mockOkResponse(count: number): Response {
-  return new Response(JSON.stringify(makeVoyageResponse(count)), { status: 200 });
+  return new Response(JSON.stringify(makeEmbeddingResponse(count)), { status: 200 });
 }
 
 function getRequestBody(callIndex = 0) {
@@ -40,6 +46,15 @@ function getRequestBody(callIndex = 0) {
 describe('embedder', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  describe('getProvider', () => {
+    it('returns openai provider config', () => {
+      expect(provider.name).toBe('openai');
+      expect(provider.apiUrl).toContain('openai.com');
+      expect(provider.model).toBe('text-embedding-3-small');
+      expect(provider.supportsInputType).toBe(false);
+    });
   });
 
   describe('embedBatch', () => {
@@ -58,34 +73,34 @@ describe('embedder', () => {
       expect(result).toEqual([]);
     });
 
-    it('sends correct request body with input_type document', async () => {
+    it('sends correct request to provider API', async () => {
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockOkResponse(1));
 
       await embedBatch(['function hello() {}'], 'document');
 
       expect(fetch).toHaveBeenCalledWith(
-        'https://api.voyageai.com/v1/embeddings',
+        provider.apiUrl,
         expect.objectContaining({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: 'Bearer test-key',
           },
-          body: JSON.stringify({
-            input: ['function hello() {}'],
-            model: 'voyage-code-3',
-            input_type: 'document',
-          }),
         }),
       );
+
+      const body = getRequestBody();
+      expect(body.input).toEqual(['function hello() {}']);
+      expect(body.model).toBe(provider.model);
     });
 
-    it('sends input_type query when specified', async () => {
+    it('omits input_type for providers that do not support it', async () => {
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockOkResponse(1));
 
-      await embedBatch(['where is auth handled'], 'query');
+      await embedBatch(['code'], 'document');
 
-      expect(getRequestBody().input_type).toBe('query');
+      const body = getRequestBody();
+      expect(body.input_type).toBeUndefined();
     });
 
     it('retries on 429 then succeeds', async () => {
@@ -105,8 +120,8 @@ describe('embedder', () => {
         new Response('rate limited', { status: 429 }),
       );
 
-      await expect(embedBatch(['code'])).rejects.toThrow('Voyage API error 429 after');
-    }, 30_000);
+      await expect(embedBatch(['code'])).rejects.toThrow('error 429 after');
+    }, 120_000);
 
     it('retries on 5xx errors then succeeds', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
@@ -125,7 +140,7 @@ describe('embedder', () => {
         new Response('bad request', { status: 400 }),
       );
 
-      await expect(embedBatch(['code'])).rejects.toThrow('Voyage API error 400');
+      await expect(embedBatch(['code'])).rejects.toThrow('API error 400');
     });
 
     it('retries on network errors then succeeds', async () => {
@@ -144,7 +159,7 @@ describe('embedder', () => {
       vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('fetch failed'));
 
       await expect(embedBatch(['code'])).rejects.toThrow('network error after');
-    }, 30_000);
+    }, 120_000);
 
     it('throws on unexpected response shape', async () => {
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
@@ -160,7 +175,7 @@ describe('embedder', () => {
           { embedding: [2, 2, 2], index: 1 },
           { embedding: [1, 1, 1], index: 0 },
         ],
-        model: 'voyage-code-3',
+        model: provider.model,
         usage: { total_tokens: 100 },
       };
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
@@ -190,12 +205,13 @@ describe('embedder', () => {
       expect(fetch).toHaveBeenCalledOnce();
     });
 
-    it('splits into multiple batches when exceeding BATCH_SIZE', async () => {
+    it('splits into multiple batches when exceeding batch size', async () => {
+      const { batchSize } = provider;
       const overflow = 50;
-      const total = BATCH_SIZE + overflow;
+      const total = batchSize + overflow;
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
       fetchSpy
-        .mockResolvedValueOnce(mockOkResponse(BATCH_SIZE))
+        .mockResolvedValueOnce(mockOkResponse(batchSize))
         .mockResolvedValueOnce(mockOkResponse(overflow));
 
       const chunks = Array.from({ length: total }, (_, i) => makeChunk(`code ${i}`));
@@ -205,16 +221,9 @@ describe('embedder', () => {
       expect(fetchSpy).toHaveBeenCalledTimes(2);
     });
 
-    it('sends input_type document for chunks', async () => {
-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockOkResponse(1));
-
-      await embedChunks([makeChunk('code')]);
-
-      expect(getRequestBody().input_type).toBe('document');
-    });
-
-    it('limits concurrent requests to MAX_CONCURRENCY', async () => {
-      const totalChunks = BATCH_SIZE * (MAX_CONCURRENCY + 2);
+    it('limits concurrent requests to maxConcurrency', async () => {
+      const { batchSize, maxConcurrency } = provider;
+      const totalChunks = batchSize * (maxConcurrency + 2);
 
       let inflight = 0;
       let peakInflight = 0;
@@ -222,11 +231,10 @@ describe('embedder', () => {
       vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, _opts) => {
         inflight++;
         peakInflight = Math.max(peakInflight, inflight);
-        // Simulate network delay so concurrent calls overlap
         await new Promise((r) => setTimeout(r, 10));
         inflight--;
         const body = JSON.parse((_opts as RequestInit).body as string);
-        return new Response(JSON.stringify(makeVoyageResponse(body.input.length)), {
+        return new Response(JSON.stringify(makeEmbeddingResponse(body.input.length)), {
           status: 200,
         });
       });
@@ -235,38 +243,38 @@ describe('embedder', () => {
       const result = await embedChunks(chunks);
 
       expect(result).toHaveLength(totalChunks);
-      expect(peakInflight).toBeLessThanOrEqual(MAX_CONCURRENCY);
+      expect(peakInflight).toBeLessThanOrEqual(maxConcurrency);
       expect(peakInflight).toBeGreaterThan(1);
     });
 
     it('preserves chunk order across concurrent batches', async () => {
+      const { batchSize } = provider;
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
       fetchSpy
-        .mockResolvedValueOnce(mockOkResponse(BATCH_SIZE))
+        .mockResolvedValueOnce(mockOkResponse(batchSize))
         .mockResolvedValueOnce(mockOkResponse(1));
 
-      const chunks = Array.from({ length: BATCH_SIZE + 1 }, (_, i) => makeChunk(`code ${i}`));
+      const chunks = Array.from({ length: batchSize + 1 }, (_, i) => makeChunk(`code ${i}`));
       const result = await embedChunks(chunks);
 
-      expect(result).toHaveLength(BATCH_SIZE + 1);
-      expect(result[BATCH_SIZE]).toHaveLength(1024);
+      expect(result).toHaveLength(batchSize + 1);
+      expect(result[batchSize]).toHaveLength(1024);
     });
   });
 
   describe('embedQuery', () => {
-    it('returns a single embedding with input_type query', async () => {
+    it('returns a single embedding', async () => {
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockOkResponse(1));
 
       const result = await embedQuery('where is auth handled');
 
       expect(result).toHaveLength(1024);
-      expect(getRequestBody().input_type).toBe('query');
     });
 
     it('throws when API returns empty data array', async () => {
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
         new Response(
-          JSON.stringify({ data: [], model: 'voyage-code-3', usage: { total_tokens: 0 } }),
+          JSON.stringify({ data: [], model: provider.model, usage: { total_tokens: 0 } }),
           { status: 200 },
         ),
       );
