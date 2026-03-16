@@ -61,7 +61,7 @@ describe('embedder', () => {
     it('returns embeddings for a batch of texts', async () => {
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockOkResponse(3));
 
-      const result = await embedBatch(['code1', 'code2', 'code3']);
+      const result = await embedBatch(['code1', 'code2', 'code3'], provider);
 
       expect(result).toHaveLength(3);
       expect(result[0]).toHaveLength(1024);
@@ -69,14 +69,14 @@ describe('embedder', () => {
     });
 
     it('returns empty array for empty input', async () => {
-      const result = await embedBatch([]);
+      const result = await embedBatch([], provider);
       expect(result).toEqual([]);
     });
 
     it('sends correct request to provider API', async () => {
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockOkResponse(1));
 
-      await embedBatch(['function hello() {}'], 'document');
+      await embedBatch(['function hello() {}'], provider, 'document');
 
       expect(fetch).toHaveBeenCalledWith(
         provider.apiUrl,
@@ -97,7 +97,7 @@ describe('embedder', () => {
     it('omits input_type for providers that do not support it', async () => {
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockOkResponse(1));
 
-      await embedBatch(['code'], 'document');
+      await embedBatch(['code'], provider, 'document');
 
       const body = getRequestBody();
       expect(body.input_type).toBeUndefined();
@@ -109,7 +109,7 @@ describe('embedder', () => {
         .mockResolvedValueOnce(new Response('rate limited', { status: 429 }))
         .mockResolvedValueOnce(mockOkResponse(1));
 
-      const result = await embedBatch(['code']);
+      const result = await embedBatch(['code'], provider);
 
       expect(result).toHaveLength(1);
       expect(fetchSpy).toHaveBeenCalledTimes(2);
@@ -120,7 +120,7 @@ describe('embedder', () => {
         new Response('rate limited', { status: 429 }),
       );
 
-      await expect(embedBatch(['code'])).rejects.toThrow('error 429 after');
+      await expect(embedBatch(['code'], provider)).rejects.toThrow('error 429 after');
     }, 120_000);
 
     it('retries on 5xx errors then succeeds', async () => {
@@ -129,7 +129,7 @@ describe('embedder', () => {
         .mockResolvedValueOnce(new Response('server error', { status: 503 }))
         .mockResolvedValueOnce(mockOkResponse(1));
 
-      const result = await embedBatch(['code']);
+      const result = await embedBatch(['code'], provider);
 
       expect(result).toHaveLength(1);
       expect(fetchSpy).toHaveBeenCalledTimes(2);
@@ -140,7 +140,7 @@ describe('embedder', () => {
         new Response('bad request', { status: 400 }),
       );
 
-      await expect(embedBatch(['code'])).rejects.toThrow('API error 400');
+      await expect(embedBatch(['code'], provider)).rejects.toThrow('API error 400');
     });
 
     it('retries on network errors then succeeds', async () => {
@@ -149,7 +149,7 @@ describe('embedder', () => {
         .mockRejectedValueOnce(new TypeError('fetch failed'))
         .mockResolvedValueOnce(mockOkResponse(1));
 
-      const result = await embedBatch(['code']);
+      const result = await embedBatch(['code'], provider);
 
       expect(result).toHaveLength(1);
       expect(fetchSpy).toHaveBeenCalledTimes(2);
@@ -158,7 +158,7 @@ describe('embedder', () => {
     it('throws after max retries on persistent network errors', async () => {
       vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('fetch failed'));
 
-      await expect(embedBatch(['code'])).rejects.toThrow('network error after');
+      await expect(embedBatch(['code'], provider)).rejects.toThrow('network error after');
     }, 120_000);
 
     it('throws on unexpected response shape', async () => {
@@ -166,7 +166,7 @@ describe('embedder', () => {
         new Response(JSON.stringify({ error: 'something' }), { status: 200 }),
       );
 
-      await expect(embedBatch(['code'])).rejects.toThrow('missing "data" array');
+      await expect(embedBatch(['code'], provider)).rejects.toThrow('missing "data" array');
     });
 
     it('preserves order by sorting on response index', async () => {
@@ -182,7 +182,7 @@ describe('embedder', () => {
         new Response(JSON.stringify(reversed), { status: 200 }),
       );
 
-      const result = await embedBatch(['first', 'second']);
+      const result = await embedBatch(['first', 'second'], provider);
 
       expect(result[0]).toEqual([1, 1, 1]);
       expect(result[1]).toEqual([2, 2, 2]);
