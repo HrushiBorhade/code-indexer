@@ -4,8 +4,6 @@ import { createLogger } from '../utils/logger.ts';
 
 const log = createLogger('embedder');
 
-// --- Provider configuration ---
-
 interface EmbeddingProvider {
   name: string;
   apiUrl: string;
@@ -17,50 +15,11 @@ interface EmbeddingProvider {
   supportsInputType: boolean;
 }
 
-function getProvider(): EmbeddingProvider {
-  const provider = env.EMBEDDING_PROVIDER;
-
-  if (provider === 'openai') {
-    const apiKey = env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new Error(
-        'OPENAI_API_KEY is required when EMBEDDING_PROVIDER=openai. Set it in your .env file.',
-      );
-    }
-    return {
-      name: 'openai',
-      apiUrl: 'https://api.openai.com/v1/embeddings',
-      model: 'text-embedding-3-small',
-      apiKey,
-      batchSize: 128,
-      maxConcurrency: 3,
-      interBatchDelayMs: 0,
-      supportsInputType: false,
-    };
-  }
-
-  const apiKey = env.VOYAGE_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      'VOYAGE_API_KEY is required when EMBEDDING_PROVIDER=voyage. Set it in your .env file.',
-    );
-  }
-  return {
-    name: 'voyage',
-    apiUrl: 'https://api.voyageai.com/v1/embeddings',
-    model: 'voyage-code-3',
-    apiKey,
-    batchSize: 8,
-    maxConcurrency: 1,
-    interBatchDelayMs: 5000,
-    supportsInputType: true,
-  };
+interface EmbeddingRequest {
+  input: string[];
+  model: string;
+  input_type?: string;
 }
-
-// --- Retry logic ---
-
-const MAX_RETRIES = 5;
-const BASE_DELAY_MS = 2000;
 
 interface EmbeddingData {
   embedding: number[];
@@ -73,37 +32,91 @@ interface EmbeddingResponse {
   usage: { total_tokens: number };
 }
 
+let cachedProvider: EmbeddingProvider | null = null;
+
+function getProvider(): EmbeddingProvider {
+  if (cachedProvider) return cachedProvider;
+
+  const provider = env.EMBEDDING_PROVIDER;
+
+  if (provider === 'openai') {
+    const apiKey = env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error(
+        'OPENAI_API_KEY is required when EMBEDDING_PROVIDER=openai. Set it in your .env file.',
+      );
+    }
+    cachedProvider = {
+      name: 'openai',
+      apiUrl: 'https://api.openai.com/v1/embeddings',
+      model: 'text-embedding-3-small',
+      apiKey,
+      batchSize: 128,
+      maxConcurrency: 3,
+      interBatchDelayMs: 0,
+      supportsInputType: false,
+    };
+    return cachedProvider;
+  } else if (provider !== 'voyage') {
+    throw new Error(`Unknown embedding provider: "${provider}". Supported: openai, voyage.`);
+  }
+
+  const apiKey = env.VOYAGE_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      'VOYAGE_API_KEY is required when EMBEDDING_PROVIDER=voyage. Set it in your .env file.',
+    );
+  }
+  cachedProvider = {
+    name: 'voyage',
+    apiUrl: 'https://api.voyageai.com/v1/embeddings',
+    model: 'voyage-code-3',
+    apiKey,
+    batchSize: 8,
+    maxConcurrency: 1,
+    interBatchDelayMs: 5000,
+    supportsInputType: true,
+  };
+  return cachedProvider;
+}
+
+const MAX_RETRIES = 5;
+const BASE_DELAY_MS = 2000;
+const MAX_CHARS_PER_CHUNK = 20_000;
+
 function isRetryable(status: number): boolean {
   return status === 429 || (status >= 500 && status < 600);
 }
 
-async function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleepWithJitter(baseMs: number): Promise<void> {
+  const jittered = Math.floor(baseMs * (0.5 + Math.random()));
+  return new Promise((resolve) => setTimeout(resolve, jittered));
 }
 
-// --- Core embedding ---
-
-// Rough char limit per chunk (~4 chars per token, leave headroom)
-const MAX_CHARS_PER_CHUNK = 20_000;
-
 function truncateTexts(texts: string[]): string[] {
-  return texts.map((t) => (t.length > MAX_CHARS_PER_CHUNK ? t.slice(0, MAX_CHARS_PER_CHUNK) : t));
+  return texts.map((t, i) => {
+    if (t.length > MAX_CHARS_PER_CHUNK) {
+      log.warn(`Chunk ${i} truncated from ${t.length} to ${MAX_CHARS_PER_CHUNK} chars`);
+      return t.slice(0, MAX_CHARS_PER_CHUNK);
+    }
+    return t;
+  });
 }
 
 async function embedBatch(
   texts: string[],
+  provider: EmbeddingProvider,
   inputType: 'document' | 'query' = 'document',
 ): Promise<number[][]> {
   if (texts.length === 0) return [];
 
-  const provider = getProvider();
-  const safetexts = truncateTexts(texts);
+  const safeTexts = truncateTexts(texts);
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     let response: Response;
 
-    const body: Record<string, unknown> = {
-      input: safetexts,
+    const body: EmbeddingRequest = {
+      input: safeTexts,
       model: provider.model,
     };
     if (provider.supportsInputType) {
@@ -128,9 +141,9 @@ async function embedBatch(
       }
       const delay = BASE_DELAY_MS * Math.pow(2, attempt);
       log.warn(
-        `Network error. Retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES + 1})...`,
+        `Network error. Retrying in ~${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES + 1})...`,
       );
-      await sleep(delay);
+      await sleepWithJitter(delay);
       continue;
     }
 
@@ -142,9 +155,9 @@ async function embedBatch(
       }
       const delay = BASE_DELAY_MS * Math.pow(2, attempt);
       log.warn(
-        `${response.status} response. Retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES + 1})...`,
+        `${response.status} response. Retrying in ~${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES + 1})...`,
       );
-      await sleep(delay);
+      await sleepWithJitter(delay);
       continue;
     }
 
@@ -160,14 +173,18 @@ async function embedBatch(
     }
 
     const sorted = [...json.data].sort((a, b) => a.index - b.index);
+    for (const item of sorted) {
+      if (!Array.isArray(item.embedding) || typeof item.index !== 'number') {
+        throw new Error(
+          `${provider.name} API returned malformed embedding: expected {embedding: number[], index: number}`,
+        );
+      }
+    }
     return sorted.map((d) => d.embedding);
   }
 
-  // Unreachable — loop always returns or throws, but TypeScript needs this
   throw new Error('Unreachable');
 }
-
-// --- Batching orchestrator ---
 
 async function embedChunks(chunks: Chunk[]): Promise<number[][]> {
   if (chunks.length === 0) return [];
@@ -185,44 +202,20 @@ async function embedChunks(chunks: Chunk[]): Promise<number[][]> {
   const results: number[][][] = new Array(totalBatches);
 
   for (let i = 0; i < totalBatches; i += provider.maxConcurrency) {
-    // Delay between windows to respect TPM rate limits
     if (i > 0 && provider.interBatchDelayMs > 0) {
-      await sleep(provider.interBatchDelayMs);
+      await sleepWithJitter(provider.interBatchDelayMs);
     }
 
     const concurrentBatches = batches.slice(i, i + provider.maxConcurrency);
     const promises = concurrentBatches.map((batch, j) => {
       const batchNum = i + j + 1;
       log.info(`Embedding batch ${batchNum}/${totalBatches} (${batch.length} chunks)...`);
-      return embedBatch(batch, 'document');
+      return embedBatch(batch, provider, 'document');
     });
 
-    const settled = await Promise.allSettled(promises);
-    const failed: number[] = [];
-
-    for (let j = 0; j < settled.length; j++) {
-      const result = settled[j];
-      if (result.status === 'fulfilled') {
-        results[i + j] = result.value;
-      } else {
-        log.error(
-          { err: result.reason },
-          `Batch ${i + j + 1}/${totalBatches} failed in concurrent window`,
-        );
-        failed.push(i + j);
-      }
-    }
-
-    // Retry failed batches sequentially (avoids concurrent retry stampede)
-    for (const idx of failed) {
-      log.warn(`Retrying batch ${idx + 1}/${totalBatches}...`);
-      try {
-        results[idx] = await embedBatch(batches[idx], 'document');
-      } catch (retryErr: unknown) {
-        throw new Error(`[embedder] Batch ${idx + 1}/${totalBatches} failed after retry`, {
-          cause: retryErr,
-        });
-      }
+    const windowResults = await Promise.all(promises);
+    for (let j = 0; j < windowResults.length; j++) {
+      results[i + j] = windowResults[j];
     }
   }
 
@@ -235,7 +228,8 @@ async function embedChunks(chunks: Chunk[]): Promise<number[][]> {
 }
 
 async function embedQuery(query: string): Promise<number[]> {
-  const [embedding] = await embedBatch([query], 'query');
+  const provider = getProvider();
+  const [embedding] = await embedBatch([query], provider, 'query');
   if (!embedding) {
     throw new Error('[embedder] API returned no embedding for query');
   }
@@ -243,3 +237,4 @@ async function embedQuery(query: string): Promise<number[]> {
 }
 
 export { embedBatch, embedChunks, embedQuery, getProvider };
+export type { EmbeddingProvider };

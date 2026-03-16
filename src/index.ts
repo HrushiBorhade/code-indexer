@@ -1,4 +1,3 @@
-import './config/dotenv.ts';
 import './config/env.ts';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -22,10 +21,8 @@ async function indexAction(targetDir: string): Promise<void> {
       process.exitCode = 1;
       return;
     }
-  } catch {
-    log.error(
-      `Cannot access "${resolvedDir}". Check that the path exists and you have read permissions.`,
-    );
+  } catch (err: unknown) {
+    log.error(`Cannot access "${resolvedDir}": ${err instanceof Error ? err.message : err}`);
     process.exitCode = 1;
     return;
   }
