@@ -58,7 +58,7 @@ async function embedBatch(
       }
       const delay = BASE_DELAY_MS * Math.pow(2, attempt);
       console.warn(
-        `[embedder] Network error. Retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})...`,
+        `[embedder] Network error. Retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES + 1})...`,
       );
       await sleep(delay);
       continue;
@@ -70,7 +70,7 @@ async function embedBatch(
       }
       const delay = BASE_DELAY_MS * Math.pow(2, attempt);
       console.warn(
-        `[embedder] ${response.status} response. Retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})...`,
+        `[embedder] ${response.status} response. Retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES + 1})...`,
       );
       await sleep(delay);
       continue;
@@ -108,8 +108,8 @@ async function embedChunks(chunks: Chunk[]): Promise<number[][]> {
   const results: number[][][] = new Array(totalBatches);
 
   for (let i = 0; i < totalBatches; i += MAX_CONCURRENCY) {
-    const window = batches.slice(i, i + MAX_CONCURRENCY);
-    const promises = window.map((batch, j) => {
+    const concurrentBatches = batches.slice(i, i + MAX_CONCURRENCY);
+    const promises = concurrentBatches.map((batch, j) => {
       const batchNum = i + j + 1;
       console.log(
         `[embedder] Embedding batch ${batchNum}/${totalBatches} (${batch.length} chunks)...`,
@@ -125,15 +125,30 @@ async function embedChunks(chunks: Chunk[]): Promise<number[][]> {
       if (result.status === 'fulfilled') {
         results[i + j] = result.value;
       } else {
+        console.error(
+          `[embedder] Batch ${i + j + 1}/${totalBatches} failed in concurrent window:`,
+          result.reason,
+        );
         failed.push(i + j);
       }
     }
 
     // Retry failed batches sequentially (avoids concurrent retry stampede)
     for (const idx of failed) {
-      console.warn(`[embedder] Retrying batch ${idx + 1}/${totalBatches} after window failure...`);
-      results[idx] = await embedBatch(batches[idx], 'document');
+      console.warn(`[embedder] Retrying batch ${idx + 1}/${totalBatches}...`);
+      try {
+        results[idx] = await embedBatch(batches[idx], 'document');
+      } catch (retryErr: unknown) {
+        throw new Error(`[embedder] Batch ${idx + 1}/${totalBatches} failed after retry`, {
+          cause: retryErr,
+        });
+      }
     }
+  }
+
+  const missing = results.findIndex((r) => r === undefined);
+  if (missing !== -1) {
+    throw new Error(`[embedder] BUG: batch ${missing + 1} has no embeddings after processing`);
   }
 
   return results.flat();
