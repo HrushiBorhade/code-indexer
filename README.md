@@ -23,9 +23,9 @@ Codebase → Walk → Chunk → Embed → Store → Search
 
 ### The pipeline
 
-1. **File discovery** — `git ls-files` respects `.gitignore` automatically. Binary detection via null-byte heuristic as safety net.
+1. **File discovery** — `git ls-files` respects `.gitignore` automatically. Binary detection via null-byte heuristic as safety net. Fast-glob fallback for non-git directories.
 
-2. **AST chunking** — tree-sitter parses code into syntax trees. Each function, class, or declaration becomes its own chunk with exact line numbers. Markdown splits on headings. JSON/YAML splits on top-level keys.
+2. **AST chunking** — tree-sitter parses code into syntax trees. Each function, class, or declaration becomes its own chunk with exact line numbers. Markdown splits on headings. JSON/YAML splits on top-level keys. SQL splits on statements. GraphQL splits on type definitions.
 
 3. **Embeddings** — Voyage AI's `voyage-code-3` model turns each chunk into a 1024-dimensional vector. Semantically similar code produces nearby vectors.
 
@@ -41,6 +41,7 @@ Codebase → Walk → Chunk → Embed → Store → Search
 |---|---|
 | Runtime | Node.js |
 | Language | TypeScript |
+| CLI | commander |
 | Parsing | tree-sitter (native N-API) |
 | Embeddings | Voyage AI `voyage-code-3` |
 | Vector DB | Qdrant Cloud |
@@ -50,15 +51,16 @@ Codebase → Walk → Chunk → Embed → Store → Search
 
 ## Supported languages
 
-**AST chunking:** TypeScript, JavaScript, Python, Rust, Go, CSS, GraphQL
+**AST chunking (tree-sitter):** TypeScript, TSX, JavaScript, Python, Rust, Go, CSS
 
-**Text chunking:** Markdown (by headings), JSON/YAML (by top-level keys), SQL (by statements)
+**Text chunking:** Markdown (by headings), JSON (by top-level keys), YAML/TOML (by top-level keys), SQL (by statements), GraphQL (by type definitions)
 
 ## Getting started
 
 ### Prerequisites
 
 - Node.js >= 20
+- Git
 - ripgrep (`brew install ripgrep`)
 - A [Voyage AI](https://voyageai.com) API key (free tier: 200M tokens/month)
 - A [Qdrant Cloud](https://cloud.qdrant.io) cluster (free tier: 1GB)
@@ -66,36 +68,56 @@ Codebase → Walk → Chunk → Embed → Store → Search
 ### Setup
 
 ```bash
-git clone https://github.com/yourusername/code-indexer.git
+git clone https://github.com/HrushiBorhade/code-indexer.git
 cd code-indexer
 npm install
 cp .env.example .env
 # Fill in your API keys in .env
 ```
 
-### Usage
+### CLI Usage
 
 ```bash
-# Index a codebase
-npm run dev:index -- /path/to/your/project
+# Index a codebase (default: current directory)
+npx tsx src/index.ts index [path]
 
-# Search
-npm run dev:search -- "where do we handle errors"
+# Search indexed codebase
+npx tsx src/index.ts search "where do we handle errors"
+npx tsx src/index.ts search "auth middleware" --mode semantic
+npx tsx src/index.ts search "handleRequest" -m grep
 
-# Watch for changes and re-index automatically
-npm run dev:watch -- /path/to/your/project
+# Watch for changes and re-index
+npx tsx src/index.ts watch [path]
+
+# Help
+npx tsx src/index.ts --help
+npx tsx src/index.ts search --help
+
+# Version
+npx tsx src/index.ts --version
 ```
+
+**Search modes:**
+
+| Mode | What it does |
+|------|-------------|
+| `hybrid` (default) | Semantic + ripgrep, merged with RRF fusion |
+| `semantic` | Vector similarity search only |
+| `grep` | Exact text match via ripgrep only |
 
 ### Development
 
 ```bash
-npm run dev            # Run with tsx (JIT compilation)
+npm run dev            # Run with tsx
 npm run build          # Compile to dist/
 npm run typecheck      # Type check without building
 npm run lint           # ESLint
 npm run lint:fix       # ESLint with auto-fix
 npm run format         # Prettier format
 npm run format:check   # Check formatting
+npm test               # Run tests (vitest)
+npm run test:watch     # Watch mode
+npm run test:coverage  # Coverage report
 ```
 
 ## Architecture
@@ -104,12 +126,32 @@ Built in six phases, each teaching one concept:
 
 | Phase | Concept | Files |
 |---|---|---|
-| 1 | File walking & AST chunking | `walker.ts`, `chunker.ts`, `languages.ts` |
+| 1 | File walking & AST chunking | `languages.ts`, `walker.ts`, `chunker/`, `index.ts` |
 | 2 | Embeddings | `embedder.ts` |
 | 3 | Vector store + SQLite cache | `store.ts`, `db.ts` |
 | 4 | Semantic search | `search.ts` |
 | 5 | Hybrid search (semantic + ripgrep) | `grep.ts`, `merge.ts` |
 | 6 | Incremental sync (Merkle tree) | `hash.ts`, `sync.ts` |
+
+### Project structure
+
+```
+src/
+├── index.ts               # CLI entrypoint (commander)
+├── languages.ts           # Language registry (LANGUAGE_MAP, extensions, types)
+├── walker.ts              # File discovery (git ls-files + fast-glob + binary check)
+└── chunker/               # Modular chunking strategies
+    ├── index.ts            # Router — dispatches to correct strategy
+    ├── types.ts            # Chunk interface
+    ├── ast.ts              # tree-sitter parsing (TS, TSX, JS, Python, Rust, Go, CSS)
+    ├── split-by-boundary.ts # Shared line-splitting helper
+    ├── markdown.ts         # Heading-based splitting
+    ├── json.ts             # Top-level key splitting
+    ├── yaml.ts             # Top-level key splitting (also TOML)
+    ├── sql.ts              # Semicolon-based splitting
+    ├── graphql.ts          # Definition keyword splitting
+    └── fallback.ts         # Whole-file-as-one-chunk fallback
+```
 
 ### Why these design decisions?
 
@@ -118,14 +160,21 @@ Built in six phases, each teaching one concept:
 | AST chunking over line splitting | Line splits cut functions in half. AST boundaries preserve semantic units. |
 | Code never stored in vector DB | Only pointers (file + line range). Code read from disk at query time. Same privacy model as Cursor. |
 | git ls-files over manual ignore lists | `.gitignore` already defines what matters. Don't reinvent it. |
+| tree-sitter native over WASM | Native N-API works on Node darwin-arm64. Simpler API, sync init. Same approach Cursor uses. |
+| commander over hand-rolled args | Auto `--help`, `--version`, flag validation, short aliases. Used by Vite, Prisma, tRPC. |
+| Modular chunker directory | 8 strategies in one file = 400+ lines. Each file < 80 lines. Adding a language = one new file. |
 | Hybrid search over pure semantic | Semantic misses exact symbol names. Ripgrep misses meaning. Combined improves accuracy ~12.5% (per Cursor). |
 | Merkle tree for sync | One file change re-indexes 3 chunks, not 3000. Same principle as Git's object model. |
 | RRF for rank fusion | Merges two ranked lists without score normalization. Simple, proven, standard. |
 
 ## Roadmap
 
-- [x] Project setup (Node.js, TypeScript, tree-sitter, ESLint, Prettier, CI)
-- [ ] Phase 1: File walking & AST chunking
+- [x] Project setup (Node.js, TypeScript, tree-sitter, ESLint, Prettier, Vitest, CI)
+- [x] Phase 1: File walking & AST chunking
+  - [x] Language registry with AST/text classification
+  - [x] File walker (git ls-files + fast-glob fallback + binary check)
+  - [x] Modular chunker (7 AST languages + 6 text strategies)
+  - [x] CLI entrypoint with commander
 - [ ] Phase 2: Embeddings (Voyage AI)
 - [ ] Phase 3: Vector store (Qdrant) + SQLite cache
 - [ ] Phase 4: Semantic search
