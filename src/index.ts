@@ -177,9 +177,15 @@ async function indexAction(targetDir: string): Promise<void> {
 
   // --- Delete old chunks for successfully chunked files, then upsert new ones ---
   for (const file of successfulFiles) {
-    const oldChunks = deleteChunksByFile(file);
-    if (oldChunks.length > 0) {
-      await deletePoints(oldChunks.map((c) => c.qdrant_id));
+    try {
+      const oldChunks = deleteChunksByFile(file);
+      if (oldChunks.length > 0) {
+        await deletePoints(oldChunks.map((c) => c.qdrant_id));
+      }
+    } catch (err: unknown) {
+      log.error(
+        `Failed to clean up old chunks for ${file}: ${err instanceof Error ? err.message : err}`,
+      );
     }
   }
 

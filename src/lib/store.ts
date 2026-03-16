@@ -90,12 +90,13 @@ async function qdrantRequest(
       continue;
     }
 
-    // Parse response body safely — not all error responses are JSON
+    // Read as text first, then try JSON parse (avoids consumed-stream issue)
+    const text = await response.text();
     let data: unknown;
     try {
-      data = await response.json();
+      data = JSON.parse(text);
     } catch {
-      data = await response.text();
+      data = text;
     }
 
     return { status: response.status, data };
@@ -111,7 +112,15 @@ async function ensureCollection(): Promise<void> {
   const { status, data } = await qdrantRequest(`/collections/${COLLECTION_NAME}`, 'GET');
 
   if (status === 200) {
-    log.info(`Collection "${COLLECTION_NAME}" already exists`);
+    // Validate dimension matches current provider
+    const existing = data as { result?: { config?: { params?: { vectors?: { size?: number } } } } };
+    const existingDim = existing?.result?.config?.params?.vectors?.size;
+    if (existingDim && existingDim !== dimension) {
+      throw new Error(
+        `Collection "${COLLECTION_NAME}" has ${existingDim} dimensions but provider "${provider.name}" uses ${dimension}. Delete the collection or switch providers.`,
+      );
+    }
+    log.info(`Collection "${COLLECTION_NAME}" already exists (${existingDim ?? '?'} dimensions)`);
     return;
   }
 
