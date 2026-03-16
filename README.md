@@ -4,21 +4,21 @@ A semantic code search engine built from first principles. Inspired by how [Curs
 
 ## What it does
 
-Point it at any codebase. It parses every file into meaningful chunks using tree-sitter ASTs (functions, classes, interfaces — not arbitrary line splits), embeds them with Voyage AI, stores vectors in Qdrant, and lets you search with natural language.
+Point it at any codebase. It parses every file into meaningful chunks using tree-sitter ASTs (functions, classes, interfaces — not arbitrary line splits), embeds them with configurable providers (OpenAI or Voyage AI), stores vectors in Qdrant, caches state in SQLite, and lets you search with natural language. Incremental — re-indexing after one file change skips everything unchanged.
 
 "Where do we handle authentication?" returns the actual auth functions — even if they never contain the word "authentication."
 
 ## How it works
 
 ```
-Codebase → Walk → Chunk → Embed → Store → Search
-             │       │       │        │       │
-         git ls-files │   Voyage AI  Qdrant  Hybrid:
-         .gitignore   │   voyage-code-3      semantic + ripgrep
-                      │                      merged via RRF
-               tree-sitter AST
-               splits by function/class
-               not by line count
+Codebase → Walk → Hash → Chunk → Embed → Store → Search
+             │      │       │       │        │       │
+         git ls-files│       │   OpenAI/   Qdrant  Hybrid:
+         .gitignore  │       │   Voyage    + SQLite semantic + ripgrep
+                  SHA-256    │              cache   merged via RRF
+                  skip    tree-sitter AST
+                unchanged splits by function/class
+                           not by line count
 ```
 
 ### The pipeline
@@ -27,13 +27,15 @@ Codebase → Walk → Chunk → Embed → Store → Search
 
 2. **AST chunking** — tree-sitter parses code into syntax trees. Each function, class, or declaration becomes its own chunk with exact line numbers. Markdown splits on headings. JSON/YAML splits on top-level keys. SQL splits on statements. GraphQL splits on type definitions.
 
-3. **Embeddings** — Voyage AI's `voyage-code-3` model turns each chunk into a 1024-dimensional vector. Semantically similar code produces nearby vectors.
+3. **Embeddings** — Configurable provider: OpenAI `text-embedding-3-small` (1536-dim, for dev) or Voyage AI `voyage-code-3` (1024-dim, for production). Batched with bounded concurrency, retry with exponential backoff + jitter.
 
-4. **Vector storage** — Qdrant stores vectors with HNSW indexing for O(log n) nearest-neighbor search. Only pointers (file path + line range) are stored — code is read from disk at query time.
+4. **Vector storage** — Qdrant stores vectors with HNSW indexing for O(log n) nearest-neighbor search. Only pointers (file path + line range) are stored — code is read from disk at query time. SQLite caches file hashes and chunk-to-Qdrant ID mappings locally.
 
-5. **Hybrid search** — Combines semantic search (conceptual matches) with ripgrep (exact text matches). Results merged via Reciprocal Rank Fusion (RRF). Hybrid beats either approach alone.
+5. **Incremental indexing** — SHA-256 hash of each file compared against SQLite cache. Unchanged files skip embedding entirely. Deleted files are cleaned up from both Qdrant and SQLite. Second run on unchanged codebase completes instantly.
 
-6. **Incremental sync** — Merkle tree with two-level caching. File-level SHA-256 detects changed files. Chunk-level SHA-256 skips re-embedding unchanged chunks. Re-indexing a codebase after one file change takes seconds, not minutes.
+6. **Hybrid search** — Combines semantic search (conceptual matches) with ripgrep (exact text matches). Results merged via Reciprocal Rank Fusion (RRF). Hybrid beats either approach alone.
+
+7. **Incremental sync** — Merkle tree with two-level caching. File-level SHA-256 detects changed files. Chunk-level SHA-256 skips re-embedding unchanged chunks. Re-indexing a codebase after one file change takes seconds, not minutes.
 
 ## Tech stack
 
@@ -43,7 +45,7 @@ Codebase → Walk → Chunk → Embed → Store → Search
 | Language | TypeScript |
 | CLI | commander |
 | Parsing | tree-sitter (native N-API) |
-| Embeddings | Voyage AI `voyage-code-3` |
+| Embeddings | OpenAI / Voyage AI (configurable) |
 | Vector DB | Qdrant Cloud |
 | Local cache | better-sqlite3 |
 | Text search | ripgrep |
@@ -62,7 +64,7 @@ Codebase → Walk → Chunk → Embed → Store → Search
 - Node.js >= 20
 - Git
 - ripgrep (`brew install ripgrep`)
-- A [Voyage AI](https://voyageai.com) API key (free tier: 200M tokens/month)
+- An [OpenAI](https://platform.openai.com) API key (recommended for dev, generous rate limits) OR a [Voyage AI](https://voyageai.com) API key (code-optimized, free tier: 3 RPM)
 - A [Qdrant Cloud](https://cloud.qdrant.io) cluster (free tier: 1GB)
 
 ### Setup
@@ -126,31 +128,41 @@ Built in six phases, each teaching one concept:
 
 | Phase | Concept | Files |
 |---|---|---|
-| 1 | File walking & AST chunking | `languages.ts`, `walker.ts`, `chunker/`, `index.ts` |
-| 2 | Embeddings | `embedder.ts` |
-| 3 | Vector store + SQLite cache | `store.ts`, `db.ts` |
+| 1 | File walking & AST chunking | `languages.ts`, `walker.ts`, `chunker/` |
+| 2 | Embeddings | `embedder.ts` (configurable OpenAI/Voyage) |
+| 3 | Vector store + SQLite cache | `store.ts`, `db.ts`, `hash.ts`, `shutdown.ts` |
 | 4 | Semantic search | `search.ts` |
 | 5 | Hybrid search (semantic + ripgrep) | `grep.ts`, `merge.ts` |
-| 6 | Incremental sync (Merkle tree) | `hash.ts`, `sync.ts` |
+| 6 | Incremental sync (Merkle tree) | `sync.ts` |
 
 ### Project structure
 
 ```
 src/
 ├── index.ts               # CLI entrypoint (commander)
-├── languages.ts           # Language registry (LANGUAGE_MAP, extensions, types)
-├── walker.ts              # File discovery (git ls-files + fast-glob + binary check)
-└── chunker/               # Modular chunking strategies
-    ├── index.ts            # Router — dispatches to correct strategy
-    ├── types.ts            # Chunk interface
-    ├── ast.ts              # tree-sitter parsing (TS, TSX, JS, Python, Rust, Go, CSS)
-    ├── split-by-boundary.ts # Shared line-splitting helper
-    ├── markdown.ts         # Heading-based splitting
-    ├── json.ts             # Top-level key splitting
-    ├── yaml.ts             # Top-level key splitting (also TOML)
-    ├── sql.ts              # Semicolon-based splitting
-    ├── graphql.ts          # Definition keyword splitting
-    └── fallback.ts         # Whole-file-as-one-chunk fallback
+├── config/
+│   └── env.ts             # Zod-validated environment variables + dotenv
+├── lib/
+│   ├── languages.ts       # Language registry (LANGUAGE_MAP, extensions, types)
+│   ├── walker.ts          # File discovery (git ls-files + fast-glob + binary check)
+│   ├── embedder.ts        # Configurable embedding (OpenAI/Voyage), batching, retry
+│   ├── hash.ts            # SHA-256 file and string hashing
+│   ├── db.ts              # SQLite cache (better-sqlite3, WAL mode)
+│   ├── store.ts           # Qdrant vector store (upsert, delete, search)
+│   └── shutdown.ts        # Graceful shutdown (SIGINT/SIGTERM handler)
+├── chunker/               # Modular chunking strategies
+│   ├── index.ts           # Router — dispatches to correct strategy
+│   ├── types.ts           # Chunk interface
+│   ├── ast.ts             # tree-sitter parsing (TS, TSX, JS, Python, Rust, Go, CSS)
+│   ├── split-by-boundary.ts # Shared line-splitting helper
+│   ├── markdown.ts        # Heading-based splitting
+│   ├── json.ts            # Top-level key splitting
+│   ├── yaml.ts            # Top-level key splitting (also TOML)
+│   ├── sql.ts             # Semicolon-based splitting
+│   ├── graphql.ts         # Definition keyword splitting
+│   └── fallback.ts        # Whole-file-as-one-chunk fallback
+└── utils/
+    └── logger.ts          # Pino structured logging (JSON prod, pretty dev)
 ```
 
 ### Why these design decisions?
@@ -175,8 +187,19 @@ src/
   - [x] File walker (git ls-files + fast-glob fallback + binary check)
   - [x] Modular chunker (7 AST languages + 6 text strategies)
   - [x] CLI entrypoint with commander
-- [ ] Phase 2: Embeddings (Voyage AI)
-- [ ] Phase 3: Vector store (Qdrant) + SQLite cache
+- [x] Phase 2: Embeddings
+  - [x] Configurable provider (OpenAI for dev, Voyage for production)
+  - [x] Batched embedding with bounded concurrency
+  - [x] Retry with exponential backoff + jitter
+  - [x] Zod-validated environment variables
+  - [x] Pino structured logging
+- [x] Phase 3: Vector store + SQLite cache
+  - [x] SHA-256 file hashing for change detection
+  - [x] SQLite cache (file hashes + chunk-to-Qdrant ID mapping)
+  - [x] Qdrant vector store (upsert, delete, search with retry)
+  - [x] Graceful shutdown (SIGINT/SIGTERM)
+  - [x] Incremental indexing (skip unchanged files)
+  - [x] Deleted file cleanup
 - [ ] Phase 4: Semantic search
 - [ ] Phase 5: Hybrid search (semantic + ripgrep + RRF)
 - [ ] Phase 6: Incremental sync (Merkle tree)
