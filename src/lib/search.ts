@@ -30,7 +30,11 @@ async function readCodeSnippet(
     const content = await fs.readFile(filePath, 'utf-8');
     const lines = content.split('\n');
     return lines.slice(lineStart - 1, lineEnd).join('\n');
-  } catch {
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') {
+      log.warn(`Failed to read ${filePath}: ${err instanceof Error ? err.message : err}`);
+    }
     return null;
   }
 }
@@ -63,7 +67,7 @@ async function semanticSearch(
     const code = snippets[i];
 
     if (code === null) {
-      log.warn(`File not found (may have been deleted since indexing): ${result.payload.filePath}`);
+      log.warn(`Skipping result — could not read ${result.payload.filePath}`);
       continue;
     }
 

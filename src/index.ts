@@ -20,6 +20,7 @@ import {
 } from './lib/db.ts';
 import { ensureCollection, upsertPoints, deletePoints } from './lib/store.ts';
 import type { UpsertPoint } from './lib/store.ts';
+import { semanticSearch } from './lib/search.ts';
 import { registerShutdownHandlers, onShutdown } from './lib/shutdown.ts';
 import { createLogger } from './utils/logger.ts';
 
@@ -214,9 +215,71 @@ async function indexAction(targetDir: string): Promise<void> {
   if (erroredFiles > 0) process.exitCode = 1;
 }
 
-function searchAction(query: string, options: { mode: string }): void {
-  const searchLog = createLogger('search');
-  searchLog.info(`TODO: search for "${query}" with mode "${options.mode}" (Phase 4)`);
+async function searchAction(
+  query: string,
+  options: { mode: string; limit: number; path: string },
+): Promise<void> {
+  if (!query.trim()) {
+    log.error('Search query cannot be empty.');
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!Number.isInteger(options.limit) || options.limit < 1) {
+    log.error('--limit must be a positive integer.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const resolvedDir = path.resolve(options.path);
+
+  if (options.mode !== 'semantic') {
+    log.info(`Mode "${options.mode}" not yet implemented. Using semantic search.`);
+  }
+
+  try {
+    initDb(resolvedDir);
+    await ensureCollection();
+  } catch (err: unknown) {
+    log.error(
+      `Failed to initialize: ${err instanceof Error ? err.message : err}. Have you indexed this directory first?`,
+    );
+    closeDb();
+    process.exitCode = 1;
+    return;
+  }
+
+  let results;
+  try {
+    results = await semanticSearch(query, options.limit);
+  } catch (err: unknown) {
+    log.error(`Search failed: ${err instanceof Error ? err.message : err}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  if (results.length === 0) {
+    console.log('\nNo results found.\n');
+    return;
+  }
+
+  console.log(`\n  ${results.length} results for "${query}"\n`);
+
+  for (const result of results) {
+    const relativePath = path.relative(resolvedDir, result.filePath);
+    const score = (result.score * 100).toFixed(1);
+
+    console.log(`  ${relativePath}:${result.lineStart}-${result.lineEnd}  (${score}% match)`);
+    console.log('  ' + '─'.repeat(60));
+
+    const lines = result.code.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const lineNum = String(result.lineStart + i).padStart(4);
+      console.log(`  ${lineNum} │ ${lines[i]}`);
+    }
+
+    console.log('');
+  }
 }
 
 function watchAction(targetDir: string): void {
@@ -249,9 +312,17 @@ program
   .addOption(
     new Option('-m, --mode <mode>', 'search mode')
       .choices(['semantic', 'grep', 'hybrid'])
-      .default('hybrid'),
+      .default('semantic'),
   )
-  .action(searchAction);
+  .option('-l, --limit <number>', 'max results to return', '10')
+  .option('-p, --path <path>', 'target directory to search', '.')
+  .action((query: string, options: { mode: string; limit: string; path: string }) => {
+    return searchAction(query, {
+      mode: options.mode,
+      limit: parseInt(options.limit, 10),
+      path: options.path,
+    });
+  });
 
 program
   .command('watch')
