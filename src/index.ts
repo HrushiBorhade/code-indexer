@@ -1,13 +1,8 @@
-import dotenv from 'dotenv';
-const dotenvResult = dotenv.config();
-if (dotenvResult.error) {
-  console.warn(`[env] Warning: Failed to load .env file: ${dotenvResult.error.message}`);
-}
-
+import './config/dotenv.ts';
+import './config/env.ts';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Command, Option } from 'commander';
-import './config/env.ts';
 import { walkFiles } from './lib/walker.ts';
 import { chunkFile } from './chunker/index.ts';
 import type { Chunk } from './chunker/types.ts';
