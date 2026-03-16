@@ -4,6 +4,7 @@ import type { Chunk } from './chunker/types.ts';
 const VOYAGE_API_URL = 'https://api.voyageai.com/v1/embeddings';
 const VOYAGE_MODEL = 'voyage-code-3';
 const BATCH_SIZE = 128;
+const MAX_CONCURRENCY = 3;
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 
@@ -18,6 +19,10 @@ interface VoyageResponse {
   usage: { total_tokens: number };
 }
 
+function isRetryable(status: number): boolean {
+  return status === 429 || (status >= 500 && status < 600);
+}
+
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -29,26 +34,43 @@ async function embedBatch(
   if (texts.length === 0) return [];
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const response = await fetch(VOYAGE_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.VOYAGE_API_KEY}`,
-      },
-      body: JSON.stringify({
-        input: texts,
-        model: VOYAGE_MODEL,
-        input_type: inputType,
-      }),
-    });
+    let response: Response;
 
-    if (response.status === 429) {
+    try {
+      response = await fetch(VOYAGE_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${env.VOYAGE_API_KEY}`,
+        },
+        body: JSON.stringify({
+          input: texts,
+          model: VOYAGE_MODEL,
+          input_type: inputType,
+        }),
+      });
+    } catch (err: unknown) {
       if (attempt === MAX_RETRIES) {
-        throw new Error(`Voyage API rate limit exceeded after ${MAX_RETRIES + 1} attempts`);
+        throw new Error(
+          `Voyage API network error after ${MAX_RETRIES + 1} attempts: ${err instanceof Error ? err.message : err}`,
+          { cause: err },
+        );
       }
       const delay = BASE_DELAY_MS * Math.pow(2, attempt);
       console.warn(
-        `[embedder] Rate limited (429). Retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})...`,
+        `[embedder] Network error. Retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES + 1})...`,
+      );
+      await sleep(delay);
+      continue;
+    }
+
+    if (isRetryable(response.status)) {
+      if (attempt === MAX_RETRIES) {
+        throw new Error(`Voyage API error ${response.status} after ${MAX_RETRIES + 1} attempts`);
+      }
+      const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+      console.warn(
+        `[embedder] ${response.status} response. Retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES + 1})...`,
       );
       await sleep(delay);
       continue;
@@ -60,38 +82,84 @@ async function embedBatch(
     }
 
     const json = (await response.json()) as VoyageResponse;
-    const sorted = json.data.sort((a, b) => a.index - b.index);
+
+    if (!Array.isArray(json.data)) {
+      throw new Error(`Voyage API returned unexpected response: missing "data" array`);
+    }
+
+    const sorted = [...json.data].sort((a, b) => a.index - b.index);
     return sorted.map((d) => d.embedding);
   }
 
-  throw new Error('embedBatch: unexpected exit from retry loop');
+  // Unreachable — loop always returns or throws, but TypeScript needs this
+  throw new Error('Unreachable');
 }
 
 async function embedChunks(chunks: Chunk[]): Promise<number[][]> {
   if (chunks.length === 0) return [];
 
   const texts = chunks.map((c) => c.content);
-  const allEmbeddings: number[][] = [];
-
+  const batches: string[][] = [];
   for (let i = 0; i < texts.length; i += BATCH_SIZE) {
-    const batch = texts.slice(i, i + BATCH_SIZE);
-    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-    const totalBatches = Math.ceil(texts.length / BATCH_SIZE);
-
-    console.log(
-      `[embedder] Embedding batch ${batchNum}/${totalBatches} (${batch.length} chunks)...`,
-    );
-
-    const embeddings = await embedBatch(batch, 'document');
-    allEmbeddings.push(...embeddings);
+    batches.push(texts.slice(i, i + BATCH_SIZE));
   }
 
-  return allEmbeddings;
+  const totalBatches = batches.length;
+  const results: number[][][] = new Array(totalBatches);
+
+  for (let i = 0; i < totalBatches; i += MAX_CONCURRENCY) {
+    const concurrentBatches = batches.slice(i, i + MAX_CONCURRENCY);
+    const promises = concurrentBatches.map((batch, j) => {
+      const batchNum = i + j + 1;
+      console.log(
+        `[embedder] Embedding batch ${batchNum}/${totalBatches} (${batch.length} chunks)...`,
+      );
+      return embedBatch(batch, 'document');
+    });
+
+    const settled = await Promise.allSettled(promises);
+    const failed: number[] = [];
+
+    for (let j = 0; j < settled.length; j++) {
+      const result = settled[j];
+      if (result.status === 'fulfilled') {
+        results[i + j] = result.value;
+      } else {
+        console.error(
+          `[embedder] Batch ${i + j + 1}/${totalBatches} failed in concurrent window:`,
+          result.reason,
+        );
+        failed.push(i + j);
+      }
+    }
+
+    // Retry failed batches sequentially (avoids concurrent retry stampede)
+    for (const idx of failed) {
+      console.warn(`[embedder] Retrying batch ${idx + 1}/${totalBatches}...`);
+      try {
+        results[idx] = await embedBatch(batches[idx], 'document');
+      } catch (retryErr: unknown) {
+        throw new Error(`[embedder] Batch ${idx + 1}/${totalBatches} failed after retry`, {
+          cause: retryErr,
+        });
+      }
+    }
+  }
+
+  const missing = results.findIndex((r) => r === undefined);
+  if (missing !== -1) {
+    throw new Error(`[embedder] BUG: batch ${missing + 1} has no embeddings after processing`);
+  }
+
+  return results.flat();
 }
 
 async function embedQuery(query: string): Promise<number[]> {
   const [embedding] = await embedBatch([query], 'query');
+  if (!embedding) {
+    throw new Error('[embedder] Voyage API returned no embedding for query');
+  }
   return embedding;
 }
 
-export { embedBatch, embedChunks, embedQuery, sleep, BATCH_SIZE };
+export { embedBatch, embedChunks, embedQuery, BATCH_SIZE, MAX_CONCURRENCY };

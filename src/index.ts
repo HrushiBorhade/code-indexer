@@ -1,5 +1,8 @@
 import dotenv from 'dotenv';
-dotenv.config();
+const dotenvResult = dotenv.config();
+if (dotenvResult.error) {
+  console.warn(`[env] Warning: Failed to load .env file: ${dotenvResult.error.message}`);
+}
 
 import fs from 'node:fs/promises';
 import path from 'node:path';

@@ -7,7 +7,18 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 
-const env = envSchema.parse(process.env);
+const result = envSchema.safeParse(process.env);
+
+if (!result.success) {
+  const missing = result.error.issues
+    .map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`)
+    .join('\n');
+  console.error(`[env] Missing or invalid environment variables:\n${missing}`);
+  console.error('[env] Set these in a .env file at the project root.');
+  process.exit(1);
+}
+
+const env = result.data;
 
 export default env;
 export type Env = z.infer<typeof envSchema>;
