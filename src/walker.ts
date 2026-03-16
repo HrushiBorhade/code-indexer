@@ -4,6 +4,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import fg from 'fast-glob';
 import { getLanguage } from './languages.ts';
+import { createLogger } from './utils/logger.ts';
+
+const log = createLogger('walker');
 
 const execFileAsync = promisify(execFile);
 const MAX_BUFFER = 10 * 1024 * 1024;
@@ -32,7 +35,7 @@ async function isBinary(filePath: string): Promise<boolean> {
   } catch (err: unknown) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code !== 'ENOENT') {
-      console.warn(`[walker] Could not read ${filePath} for binary check (${code ?? err})`);
+      log.warn(`Could not read ${filePath} for binary check (${code ?? err})`);
     }
     return true;
   } finally {
@@ -49,8 +52,8 @@ async function discoverFiles(rootDir: string): Promise<string[]> {
     );
     return stdout.split('\n').filter(Boolean);
   } catch (err: unknown) {
-    console.warn(
-      `[walker] git ls-files failed, falling back to fast-glob (.gitignore rules will NOT apply): ${err instanceof Error ? err.message : err}`,
+    log.warn(
+      `git ls-files failed, falling back to fast-glob (.gitignore rules will NOT apply): ${err instanceof Error ? err.message : err}`,
     );
     const files = await fg('**/*', {
       cwd: rootDir,

@@ -7,6 +7,9 @@ import Go from 'tree-sitter-go';
 import CSS from 'tree-sitter-css';
 import type { Chunk } from './types.ts';
 import { fallbackChunk } from './fallback.ts';
+import { createLogger } from '../utils/logger.ts';
+
+const log = createLogger('chunker');
 
 // --- Parser cache (one parser per language, reused) ---
 
@@ -67,7 +70,7 @@ const AST_NODE_TYPES: Record<string, Set<string>> = {
 function chunkAST(source: string, filePath: string, language: string): Chunk[] {
   const parser = getParser(language);
   if (!parser) {
-    console.warn(`[chunker] No tree-sitter grammar for "${language}", using fallback: ${filePath}`);
+    log.warn(`No tree-sitter grammar for "${language}", using fallback: ${filePath}`);
     return [fallbackChunk(source, filePath, language)];
   }
 
@@ -83,8 +86,8 @@ function chunkAST(source: string, filePath: string, language: string): Chunk[] {
   try {
     tree = parser.parse(source);
   } catch (err: unknown) {
-    console.error(
-      `[chunker] tree-sitter parse failed for ${filePath}: ${err instanceof Error ? err.message : err}`,
+    log.error(
+      `tree-sitter parse failed for ${filePath}: ${err instanceof Error ? err.message : err}`,
     );
     return [fallbackChunk(source, filePath, language)];
   }
