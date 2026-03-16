@@ -1,0 +1,202 @@
+import { describe, it, expect, vi, afterEach } from 'vitest';
+
+vi.mock('./env.ts', () => ({
+  default: { VOYAGE_API_KEY: 'test-key', NODE_ENV: 'test' },
+}));
+
+import { embedBatch, embedChunks, embedQuery, BATCH_SIZE } from './embedder.ts';
+import type { Chunk } from './chunker/types.ts';
+
+function makeChunk(content: string): Chunk {
+  return {
+    content,
+    filePath: '/fake/file.ts',
+    lineStart: 1,
+    lineEnd: 10,
+    language: 'typescript',
+    type: 'ast',
+  };
+}
+
+function makeVoyageResponse(count: number) {
+  return {
+    data: Array.from({ length: count }, (_, i) => ({
+      embedding: Array.from({ length: 1024 }, () => Math.random()),
+      index: i,
+    })),
+    model: 'voyage-code-3',
+    usage: { total_tokens: count * 50 },
+  };
+}
+
+describe('embedder', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe('embedBatch', () => {
+    it('returns embeddings for a batch of texts', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify(makeVoyageResponse(3)), { status: 200 }),
+      );
+
+      const result = await embedBatch(['code1', 'code2', 'code3']);
+
+      expect(result).toHaveLength(3);
+      expect(result[0]).toHaveLength(1024);
+      expect(fetch).toHaveBeenCalledOnce();
+    });
+
+    it('returns empty array for empty input', async () => {
+      const result = await embedBatch([]);
+      expect(result).toEqual([]);
+    });
+
+    it('sends correct request body with input_type document', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify(makeVoyageResponse(1)), { status: 200 }),
+      );
+
+      await embedBatch(['function hello() {}'], 'document');
+
+      expect(fetch).toHaveBeenCalledWith(
+        'https://api.voyageai.com/v1/embeddings',
+        expect.objectContaining({
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer test-key',
+          },
+          body: JSON.stringify({
+            input: ['function hello() {}'],
+            model: 'voyage-code-3',
+            input_type: 'document',
+          }),
+        }),
+      );
+    });
+
+    it('sends input_type query when specified', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify(makeVoyageResponse(1)), { status: 200 }),
+      );
+
+      await embedBatch(['where is auth handled'], 'query');
+
+      const callBody = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+      expect(callBody.input_type).toBe('query');
+    });
+
+    it('retries on 429 then succeeds', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      fetchSpy
+        .mockResolvedValueOnce(new Response('rate limited', { status: 429 }))
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(makeVoyageResponse(1)), { status: 200 }),
+        );
+
+      const result = await embedBatch(['code']);
+
+      expect(result).toHaveLength(1);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    }, 10_000);
+
+    it('throws after max retries on persistent 429', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response('rate limited', { status: 429 }),
+      );
+
+      await expect(embedBatch(['code'])).rejects.toThrow('rate limit exceeded');
+    }, 30_000);
+
+    it('throws immediately on non-429 errors', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response('internal server error', { status: 500 }),
+      );
+
+      await expect(embedBatch(['code'])).rejects.toThrow('Voyage API error 500');
+    });
+
+    it('preserves order by sorting on response index', async () => {
+      const reversed = {
+        data: [
+          { embedding: [2, 2, 2], index: 1 },
+          { embedding: [1, 1, 1], index: 0 },
+        ],
+        model: 'voyage-code-3',
+        usage: { total_tokens: 100 },
+      };
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify(reversed), { status: 200 }),
+      );
+
+      const result = await embedBatch(['first', 'second']);
+
+      expect(result[0]).toEqual([1, 1, 1]);
+      expect(result[1]).toEqual([2, 2, 2]);
+    });
+  });
+
+  describe('embedChunks', () => {
+    it('returns empty array for empty input', async () => {
+      const result = await embedChunks([]);
+      expect(result).toEqual([]);
+    });
+
+    it('embeds small batch in single request', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify(makeVoyageResponse(5)), { status: 200 }),
+      );
+
+      const chunks = Array.from({ length: 5 }, (_, i) => makeChunk(`code ${i}`));
+      const result = await embedChunks(chunks);
+
+      expect(result).toHaveLength(5);
+      expect(fetch).toHaveBeenCalledOnce();
+    });
+
+    it('splits into multiple batches when exceeding BATCH_SIZE', async () => {
+      const overflow = 50;
+      const total = BATCH_SIZE + overflow;
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      fetchSpy
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(makeVoyageResponse(BATCH_SIZE)), { status: 200 }),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(makeVoyageResponse(overflow)), { status: 200 }),
+        );
+
+      const chunks = Array.from({ length: total }, (_, i) => makeChunk(`code ${i}`));
+      const result = await embedChunks(chunks);
+
+      expect(result).toHaveLength(total);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('sends input_type document for chunks', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify(makeVoyageResponse(1)), { status: 200 }),
+      );
+
+      await embedChunks([makeChunk('code')]);
+
+      const callBody = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+      expect(callBody.input_type).toBe('document');
+    });
+  });
+
+  describe('embedQuery', () => {
+    it('returns a single embedding with input_type query', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify(makeVoyageResponse(1)), { status: 200 }),
+      );
+
+      const result = await embedQuery('where is auth handled');
+
+      expect(result).toHaveLength(1024);
+      const callBody = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+      expect(callBody.input_type).toBe('query');
+    });
+  });
+});
