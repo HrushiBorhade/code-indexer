@@ -5,6 +5,7 @@ const envSchema = z.object({
   QDRANT_URL: z.string().url('QDRANT_URL must be a valid URL').optional(),
   QDRANT_KEY: z.string().min(1, 'QDRANT_KEY must not be empty').optional(),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']).default('info'),
 });
 
 const result = envSchema.safeParse(process.env);

@@ -1,5 +1,8 @@
 import env from './env.ts';
 import type { Chunk } from './chunker/types.ts';
+import { createLogger } from './utils/logger.ts';
+
+const log = createLogger('embedder');
 
 const VOYAGE_API_URL = 'https://api.voyageai.com/v1/embeddings';
 const VOYAGE_MODEL = 'voyage-code-3';
@@ -57,8 +60,8 @@ async function embedBatch(
         );
       }
       const delay = BASE_DELAY_MS * Math.pow(2, attempt);
-      console.warn(
-        `[embedder] Network error. Retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES + 1})...`,
+      log.warn(
+        `Network error. Retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES + 1})...`,
       );
       await sleep(delay);
       continue;
@@ -69,8 +72,8 @@ async function embedBatch(
         throw new Error(`Voyage API error ${response.status} after ${MAX_RETRIES + 1} attempts`);
       }
       const delay = BASE_DELAY_MS * Math.pow(2, attempt);
-      console.warn(
-        `[embedder] ${response.status} response. Retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES + 1})...`,
+      log.warn(
+        `${response.status} response. Retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES + 1})...`,
       );
       await sleep(delay);
       continue;
@@ -111,9 +114,7 @@ async function embedChunks(chunks: Chunk[]): Promise<number[][]> {
     const concurrentBatches = batches.slice(i, i + MAX_CONCURRENCY);
     const promises = concurrentBatches.map((batch, j) => {
       const batchNum = i + j + 1;
-      console.log(
-        `[embedder] Embedding batch ${batchNum}/${totalBatches} (${batch.length} chunks)...`,
-      );
+      log.info(`Embedding batch ${batchNum}/${totalBatches} (${batch.length} chunks)...`);
       return embedBatch(batch, 'document');
     });
 
@@ -125,9 +126,9 @@ async function embedChunks(chunks: Chunk[]): Promise<number[][]> {
       if (result.status === 'fulfilled') {
         results[i + j] = result.value;
       } else {
-        console.error(
-          `[embedder] Batch ${i + j + 1}/${totalBatches} failed in concurrent window:`,
-          result.reason,
+        log.error(
+          { err: result.reason },
+          `Batch ${i + j + 1}/${totalBatches} failed in concurrent window`,
         );
         failed.push(i + j);
       }
@@ -135,7 +136,7 @@ async function embedChunks(chunks: Chunk[]): Promise<number[][]> {
 
     // Retry failed batches sequentially (avoids concurrent retry stampede)
     for (const idx of failed) {
-      console.warn(`[embedder] Retrying batch ${idx + 1}/${totalBatches}...`);
+      log.warn(`Retrying batch ${idx + 1}/${totalBatches}...`);
       try {
         results[idx] = await embedBatch(batches[idx], 'document');
       } catch (retryErr: unknown) {

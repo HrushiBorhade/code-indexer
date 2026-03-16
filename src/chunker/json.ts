@@ -1,5 +1,8 @@
 import type { Chunk } from './types.ts';
 import { fallbackChunk } from './fallback.ts';
+import { createLogger } from '../utils/logger.ts';
+
+const log = createLogger('chunker');
 
 const SMALL_FILE_THRESHOLD = 50;
 
@@ -33,9 +36,7 @@ function chunkJSON(source: string, filePath: string): Chunk[] {
 
     return chunks.length > 0 ? chunks : [fallbackChunk(source, filePath, 'json')];
   } catch (err: unknown) {
-    console.warn(
-      `[chunker] JSON parse failed for ${filePath}: ${err instanceof Error ? err.message : err}`,
-    );
+    log.warn(`JSON parse failed for ${filePath}: ${err instanceof Error ? err.message : err}`);
     return [fallbackChunk(source, filePath, 'json')];
   }
 }

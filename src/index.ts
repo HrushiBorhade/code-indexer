@@ -11,6 +11,9 @@ import './env.ts';
 import { walkFiles } from './walker.ts';
 import { chunkFile } from './chunker/index.ts';
 import { getLanguage } from './languages.ts';
+import { createLogger } from './utils/logger.ts';
+
+const log = createLogger('index');
 
 async function indexAction(targetDir: string): Promise<void> {
   const resolvedDir = path.resolve(targetDir);
@@ -18,24 +21,24 @@ async function indexAction(targetDir: string): Promise<void> {
   try {
     const stat = await fs.stat(resolvedDir);
     if (!stat.isDirectory()) {
-      console.error(`[index] "${resolvedDir}" is not a directory.`);
+      log.error(`"${resolvedDir}" is not a directory.`);
       process.exitCode = 1;
       return;
     }
   } catch {
-    console.error(
-      `[index] Cannot access "${resolvedDir}". Check that the path exists and you have read permissions.`,
+    log.error(
+      `Cannot access "${resolvedDir}". Check that the path exists and you have read permissions.`,
     );
     process.exitCode = 1;
     return;
   }
 
-  console.log(`[index] Scanning ${resolvedDir}...`);
-  console.time('[index] Done');
+  log.info(`Scanning ${resolvedDir}...`);
+  const startTime = Date.now();
 
   const files = await walkFiles(resolvedDir);
   if (files.length === 0) {
-    console.log('[index] No supported files found.');
+    log.info('No supported files found.');
     return;
   }
 
@@ -52,8 +55,8 @@ async function indexAction(targetDir: string): Promise<void> {
     .map(([lang, count]) => `${count} ${lang}`)
     .join(', ');
 
-  console.log(`[index] Found ${files.length} files (${breakdown})`);
-  console.log('[index] Chunking files...');
+  log.info(`Found ${files.length} files (${breakdown})`);
+  log.info('Chunking files...');
 
   let totalChunks = 0;
   let erroredFiles = 0;
@@ -64,25 +67,27 @@ async function indexAction(targetDir: string): Promise<void> {
       totalChunks += chunks.length;
     } catch (err: unknown) {
       erroredFiles++;
-      console.error(`[index] Failed to chunk ${file}: ${err instanceof Error ? err.message : err}`);
+      log.error(`Failed to chunk ${file}: ${err instanceof Error ? err.message : err}`);
     }
   }
 
-  console.log(`[index] Created ${totalChunks} chunks from ${files.length} files`);
+  log.info(`Created ${totalChunks} chunks from ${files.length} files`);
   if (erroredFiles > 0) {
-    console.warn(`[index] ${erroredFiles} files failed to chunk (see errors above)`);
+    log.warn(`${erroredFiles} files failed to chunk (see errors above)`);
     process.exitCode = 1;
   }
-  console.timeEnd('[index] Done');
+  log.info(`Done in ${Date.now() - startTime}ms`);
 }
 
 function searchAction(query: string, options: { mode: string }): void {
-  console.log(`[search] TODO: search for "${query}" with mode "${options.mode}" (Phase 4)`);
+  const searchLog = createLogger('search');
+  searchLog.info(`TODO: search for "${query}" with mode "${options.mode}" (Phase 4)`);
 }
 
 function watchAction(targetDir: string): void {
+  const watchLog = createLogger('watch');
   const resolvedDir = path.resolve(targetDir);
-  console.log(`[watch] TODO: watch ${resolvedDir} for changes (Phase 6)`);
+  watchLog.info(`TODO: watch ${resolvedDir} for changes (Phase 6)`);
 }
 
 const program = new Command();
@@ -116,6 +121,7 @@ program
   .action(watchAction);
 
 program.parseAsync().catch((err: unknown) => {
-  console.error('[fatal]', err instanceof Error ? (err.stack ?? err.message) : err);
+  const fatalLog = createLogger('fatal');
+  fatalLog.error(err instanceof Error ? (err.stack ?? err.message) : err);
   process.exit(1);
 });
