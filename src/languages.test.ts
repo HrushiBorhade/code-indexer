@@ -34,6 +34,7 @@ describe('languages', () => {
   describe('AST_LANGUAGES', () => {
     it('contains expected languages', () => {
       expect(AST_LANGUAGES.has('typescript')).toBe(true);
+      expect(AST_LANGUAGES.has('tsx')).toBe(true);
       expect(AST_LANGUAGES.has('python')).toBe(true);
       expect(AST_LANGUAGES.has('rust')).toBe(true);
     });
@@ -72,7 +73,7 @@ describe('languages', () => {
 
   describe('LANGUAGE_MAP', () => {
     it('maps all extensions from each language entry', () => {
-      expect(LANGUAGE_MAP.get('.tsx')?.name).toBe('typescript');
+      expect(LANGUAGE_MAP.get('.tsx')?.name).toBe('tsx');
       expect(LANGUAGE_MAP.get('.jsx')?.name).toBe('javascript');
       expect(LANGUAGE_MAP.get('.yml')?.name).toBe('yaml');
       expect(LANGUAGE_MAP.get('.gql')?.name).toBe('graphql');
