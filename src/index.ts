@@ -45,9 +45,17 @@ async function indexAction(targetDir: string): Promise<void> {
   const startTime = Date.now();
 
   // --- Init persistence layer ---
-  initDb(resolvedDir);
-  onShutdown(closeDb);
-  await ensureCollection();
+  try {
+    initDb(resolvedDir);
+    await ensureCollection();
+  } catch (err: unknown) {
+    log.error(
+      `Failed to initialize persistence layer: ${err instanceof Error ? err.message : err}. Check your QDRANT_URL and QDRANT_KEY in .env.`,
+    );
+    closeDb();
+    process.exitCode = 1;
+    return;
+  }
 
   // --- Walk files ---
   const files = await walkFiles(resolvedDir);
@@ -71,16 +79,19 @@ async function indexAction(targetDir: string): Promise<void> {
 
   log.info(`Found ${files.length} files (${breakdown})`);
 
-  // --- Hash check: skip unchanged files ---
+  // --- Hash check: skip unchanged files, cache hashes to avoid double reads ---
   const changedFiles: string[] = [];
+  const fileHashMap = new Map<string, string>();
+
   for (const file of files) {
     const currentHash = await hashFile(file);
+    fileHashMap.set(file, currentHash);
     const cached = getFileHash(file);
     if (cached && cached.sha256 === currentHash) continue;
     changedFiles.push(file);
   }
 
-  // --- Detect deleted files ---
+  // --- Detect deleted files: delete from Qdrant first, then SQLite ---
   const currentFileSet = new Set(files);
   const storedHashes = getAllFileHashes();
   const deletedFiles = storedHashes.filter((row) => !currentFileSet.has(row.file_path));
@@ -88,11 +99,17 @@ async function indexAction(targetDir: string): Promise<void> {
   if (deletedFiles.length > 0) {
     log.info(`Removing ${deletedFiles.length} deleted files from index...`);
     for (const row of deletedFiles) {
-      const oldChunks = deleteChunksByFile(row.file_path);
-      if (oldChunks.length > 0) {
-        await deletePoints(oldChunks.map((c) => c.qdrant_id));
+      try {
+        const oldChunks = deleteChunksByFile(row.file_path);
+        if (oldChunks.length > 0) {
+          await deletePoints(oldChunks.map((c) => c.qdrant_id));
+        }
+        deleteFileHash(row.file_path);
+      } catch (err: unknown) {
+        log.error(
+          `Failed to clean up deleted file ${row.file_path}: ${err instanceof Error ? err.message : err}`,
+        );
       }
-      deleteFileHash(row.file_path);
     }
   }
 
@@ -109,25 +126,21 @@ async function indexAction(targetDir: string): Promise<void> {
   // --- Chunk changed files ---
   log.info('Chunking files...');
   const allChunks: Chunk[] = [];
+  const successfulFiles = new Set<string>();
   let erroredFiles = 0;
 
   for (const file of changedFiles) {
-    // Remove old chunks for this file before re-chunking
-    const oldChunks = deleteChunksByFile(file);
-    if (oldChunks.length > 0) {
-      await deletePoints(oldChunks.map((c) => c.qdrant_id));
-    }
-
     try {
       const chunks = await chunkFile(file);
       allChunks.push(...chunks);
+      successfulFiles.add(file);
     } catch (err: unknown) {
       erroredFiles++;
       log.error(`Failed to chunk ${file}: ${err instanceof Error ? err.message : err}`);
     }
   }
 
-  log.info(`Created ${allChunks.length} chunks from ${changedFiles.length - erroredFiles} files`);
+  log.info(`Created ${allChunks.length} chunks from ${successfulFiles.size} files`);
   if (erroredFiles > 0) {
     log.warn(`${erroredFiles} files failed to chunk (see errors above)`);
   }
@@ -149,12 +162,6 @@ async function indexAction(targetDir: string): Promise<void> {
     return;
   }
 
-  if (embeddings.length === 0) {
-    log.error('Embedding returned no results.');
-    process.exitCode = 1;
-    return;
-  }
-
   if (embeddings.length !== allChunks.length) {
     log.error(
       `Embedding count mismatch: got ${embeddings.length} embeddings for ${allChunks.length} chunks`,
@@ -165,8 +172,17 @@ async function indexAction(targetDir: string): Promise<void> {
 
   log.info(`Generated ${embeddings.length} embeddings (${embeddings[0].length} dimensions each)`);
 
-  // --- Upsert to Qdrant ---
+  // --- Delete old chunks for successfully chunked files, then upsert new ones ---
+  for (const file of successfulFiles) {
+    const oldChunks = deleteChunksByFile(file);
+    if (oldChunks.length > 0) {
+      await deletePoints(oldChunks.map((c) => c.qdrant_id));
+    }
+  }
+
   log.info('Upserting to Qdrant...');
+  const chunkHashes = allChunks.map((chunk) => hashString(chunk.content));
+
   const points: UpsertPoint[] = allChunks.map((chunk, i) => ({
     embedding: embeddings[i],
     payload: {
@@ -174,7 +190,7 @@ async function indexAction(targetDir: string): Promise<void> {
       lineStart: chunk.lineStart,
       lineEnd: chunk.lineEnd,
       language: chunk.language,
-      chunkHash: hashString(chunk.content),
+      chunkHash: chunkHashes[i],
     },
   }));
 
@@ -183,19 +199,15 @@ async function indexAction(targetDir: string): Promise<void> {
   // --- Update SQLite cache ---
   for (let i = 0; i < allChunks.length; i++) {
     const chunk = allChunks[i];
-    upsertChunk(
-      hashString(chunk.content),
-      qdrantIds[i],
-      chunk.filePath,
-      chunk.lineStart,
-      chunk.lineEnd,
-    );
+    upsertChunk(chunkHashes[i], qdrantIds[i], chunk.filePath, chunk.lineStart, chunk.lineEnd);
   }
 
-  // Update file hashes for all changed files (including ones that errored — they'll re-process next run)
-  for (const file of changedFiles) {
-    const currentHash = await hashFile(file);
-    setFileHash(file, currentHash);
+  // Only update hashes for files that chunked successfully — errored files will retry next run
+  for (const file of successfulFiles) {
+    const cachedHash = fileHashMap.get(file);
+    if (cachedHash) {
+      setFileHash(file, cachedHash);
+    }
   }
 
   log.info(`Done in ${Date.now() - startTime}ms`);
@@ -213,8 +225,9 @@ function watchAction(targetDir: string): void {
   watchLog.info(`TODO: watch ${resolvedDir} for changes (Phase 6)`);
 }
 
-// --- Register shutdown handlers before CLI parsing ---
+// --- Register shutdown handlers + DB cleanup at module level (once per process) ---
 registerShutdownHandlers();
+onShutdown(closeDb);
 
 const program = new Command();
 
