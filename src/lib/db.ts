@@ -44,30 +44,36 @@ function initDb(rootDir: string): Database.Database {
   // Ensure the .code-indexer directory exists (recursive mkdir is a no-op if it already exists)
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
-  db = new Database(dbPath);
+  try {
+    db = new Database(dbPath);
 
-  // WAL mode: reads don't block writes, better concurrent performance
-  db.pragma('journal_mode = WAL');
+    db.pragma('journal_mode = WAL');
 
-  // Create tables if they don't exist
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS file_hashes (
-      file_path TEXT PRIMARY KEY,
-      sha256 TEXT NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS file_hashes (
+        file_path TEXT PRIMARY KEY,
+        sha256 TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
 
-    CREATE TABLE IF NOT EXISTS chunk_cache (
-      chunk_hash TEXT PRIMARY KEY,
-      qdrant_id TEXT NOT NULL,
-      file_path TEXT NOT NULL,
-      line_start INTEGER NOT NULL,
-      line_end INTEGER NOT NULL
-    );
+      CREATE TABLE IF NOT EXISTS chunk_cache (
+        chunk_hash TEXT PRIMARY KEY,
+        qdrant_id TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        line_start INTEGER NOT NULL,
+        line_end INTEGER NOT NULL
+      );
 
-    CREATE INDEX IF NOT EXISTS idx_chunk_cache_file_path
-      ON chunk_cache(file_path);
-  `);
+      CREATE INDEX IF NOT EXISTS idx_chunk_cache_file_path
+        ON chunk_cache(file_path);
+    `);
+  } catch (err: unknown) {
+    // Clean up partial state so next initDb attempt doesn't return a broken instance
+    db?.close();
+    db = null;
+    initializedRootDir = null;
+    throw err;
+  }
 
   initializedRootDir = rootDir;
   log.info(`SQLite database initialized at ${dbPath}`);
@@ -150,7 +156,11 @@ function deleteChunksByFile(filePath: string): ChunkCacheRow[] {
 
 function closeDb(): void {
   if (db) {
-    db.close();
+    try {
+      db.close();
+    } catch (err: unknown) {
+      log.warn(`Error closing database: ${err instanceof Error ? err.message : err}`);
+    }
     db = null;
     initializedRootDir = null;
     log.info('SQLite database closed');

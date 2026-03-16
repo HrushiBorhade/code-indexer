@@ -23,11 +23,7 @@ interface SearchResult {
   payload: PointPayload;
 }
 
-let cachedQdrantConfig: { url: string; apiKey: string } | null = null;
-
 function getQdrantConfig(): { url: string; apiKey: string } {
-  if (cachedQdrantConfig) return cachedQdrantConfig;
-
   const url = env.QDRANT_URL;
   const apiKey = env.QDRANT_KEY;
   if (!url || !apiKey) {
@@ -35,8 +31,7 @@ function getQdrantConfig(): { url: string; apiKey: string } {
       'QDRANT_URL and QDRANT_KEY are required for vector store. Set them in your .env file.',
     );
   }
-  cachedQdrantConfig = { url, apiKey };
-  return cachedQdrantConfig;
+  return { url, apiKey };
 }
 
 function isRetryable(status: number): boolean {
