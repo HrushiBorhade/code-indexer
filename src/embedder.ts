@@ -19,6 +19,10 @@ interface VoyageResponse {
   usage: { total_tokens: number };
 }
 
+function isRetryable(status: number): boolean {
+  return status === 429 || (status >= 500 && status < 600);
+}
+
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -30,26 +34,43 @@ async function embedBatch(
   if (texts.length === 0) return [];
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const response = await fetch(VOYAGE_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.VOYAGE_API_KEY}`,
-      },
-      body: JSON.stringify({
-        input: texts,
-        model: VOYAGE_MODEL,
-        input_type: inputType,
-      }),
-    });
+    let response: Response;
 
-    if (response.status === 429) {
+    try {
+      response = await fetch(VOYAGE_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${env.VOYAGE_API_KEY}`,
+        },
+        body: JSON.stringify({
+          input: texts,
+          model: VOYAGE_MODEL,
+          input_type: inputType,
+        }),
+      });
+    } catch (err: unknown) {
       if (attempt === MAX_RETRIES) {
-        throw new Error(`Voyage API rate limit exceeded after ${MAX_RETRIES + 1} attempts`);
+        throw new Error(
+          `Voyage API network error after ${MAX_RETRIES + 1} attempts: ${err instanceof Error ? err.message : err}`,
+          { cause: err },
+        );
       }
       const delay = BASE_DELAY_MS * Math.pow(2, attempt);
       console.warn(
-        `[embedder] Rate limited (429). Retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})...`,
+        `[embedder] Network error. Retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})...`,
+      );
+      await sleep(delay);
+      continue;
+    }
+
+    if (isRetryable(response.status)) {
+      if (attempt === MAX_RETRIES) {
+        throw new Error(`Voyage API error ${response.status} after ${MAX_RETRIES + 1} attempts`);
+      }
+      const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+      console.warn(
+        `[embedder] ${response.status} response. Retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})...`,
       );
       await sleep(delay);
       continue;
@@ -61,6 +82,11 @@ async function embedBatch(
     }
 
     const json = (await response.json()) as VoyageResponse;
+
+    if (!Array.isArray(json.data)) {
+      throw new Error(`Voyage API returned unexpected response: missing "data" array`);
+    }
+
     const sorted = [...json.data].sort((a, b) => a.index - b.index);
     return sorted.map((d) => d.embedding);
   }
@@ -115,6 +141,9 @@ async function embedChunks(chunks: Chunk[]): Promise<number[][]> {
 
 async function embedQuery(query: string): Promise<number[]> {
   const [embedding] = await embedBatch([query], 'query');
+  if (!embedding) {
+    throw new Error('[embedder] Voyage API returned no embedding for query');
+  }
   return embedding;
 }
 

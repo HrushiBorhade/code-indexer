@@ -105,15 +105,53 @@ describe('embedder', () => {
         new Response('rate limited', { status: 429 }),
       );
 
-      await expect(embedBatch(['code'])).rejects.toThrow('rate limit exceeded');
+      await expect(embedBatch(['code'])).rejects.toThrow('Voyage API error 429 after');
     }, 30_000);
 
-    it('throws immediately on non-429 errors', async () => {
+    it('retries on 5xx errors then succeeds', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      fetchSpy
+        .mockResolvedValueOnce(new Response('server error', { status: 503 }))
+        .mockResolvedValueOnce(mockOkResponse(1));
+
+      const result = await embedBatch(['code']);
+
+      expect(result).toHaveLength(1);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    }, 10_000);
+
+    it('throws immediately on non-retryable errors', async () => {
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-        new Response('internal server error', { status: 500 }),
+        new Response('bad request', { status: 400 }),
       );
 
-      await expect(embedBatch(['code'])).rejects.toThrow('Voyage API error 500');
+      await expect(embedBatch(['code'])).rejects.toThrow('Voyage API error 400');
+    });
+
+    it('retries on network errors then succeeds', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      fetchSpy
+        .mockRejectedValueOnce(new TypeError('fetch failed'))
+        .mockResolvedValueOnce(mockOkResponse(1));
+
+      const result = await embedBatch(['code']);
+
+      expect(result).toHaveLength(1);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    }, 10_000);
+
+    it('throws after max retries on persistent network errors', async () => {
+      vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('fetch failed'));
+
+      await expect(embedBatch(['code'])).rejects.toThrow('network error after');
+    }, 30_000);
+
+    it('throws on unexpected response shape', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: 'something' }), { status: 200 }),
+      );
+
+      await expect(embedBatch(['code'])).rejects.toThrow('missing "data" array');
     });
 
     it('preserves order by sorting on response index', async () => {
@@ -223,6 +261,17 @@ describe('embedder', () => {
 
       expect(result).toHaveLength(1024);
       expect(getRequestBody().input_type).toBe('query');
+    });
+
+    it('throws when API returns empty data array', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ data: [], model: 'voyage-code-3', usage: { total_tokens: 0 } }),
+          { status: 200 },
+        ),
+      );
+
+      await expect(embedQuery('test')).rejects.toThrow('returned no embedding');
     });
   });
 });
