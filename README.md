@@ -152,6 +152,7 @@ src/
 │   ├── search.ts          # Semantic search orchestrator
 │   ├── grep.ts            # Ripgrep text search wrapper
 │   ├── merge.ts           # RRF fusion algorithm
+│   ├── sync.ts            # Merkle tree incremental sync
 │   └── shutdown.ts        # Graceful shutdown (SIGINT/SIGTERM handler)
 ├── chunker/               # Modular chunking strategies
 │   ├── index.ts           # Router — dispatches to correct strategy
@@ -212,7 +213,11 @@ src/
   - [x] RRF fusion algorithm (k=60, deduplication, combined scoring)
   - [x] Three modes: semantic, grep, hybrid (default)
   - [x] Parallel execution of semantic + grep in hybrid mode
-- [ ] Phase 6: Incremental sync (Merkle tree)
+- [x] Phase 6: Incremental sync (Merkle tree)
+  - [x] Merkle tree builder with directory-level hashing
+  - [x] Two-level diff: skip unchanged directory subtrees, then file-level comparison
+  - [x] Bounded concurrency (32) for file hashing with graceful failure handling
+  - [x] dir_hashes SQLite table for persisting directory Merkle state
 - [ ] Web UI: GitHub OAuth, repo explorer, chat sidebar
 - [ ] Worker-based indexing via job queues (BullMQ + Redis)
 - [ ] Chat: search results as context → LLM answers
