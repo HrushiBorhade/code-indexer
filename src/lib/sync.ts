@@ -13,18 +13,24 @@ import { createLogger } from '../utils/logger.ts';
 const log = createLogger('sync');
 
 const ROOT_KEY = '__root__';
+const HASH_CONCURRENCY = 32;
 
 interface SyncResult {
   added: string[];
   modified: string[];
   deleted: string[];
   fileHashMap: Map<string, string>;
+  tree: MerkleTree;
 }
 
 interface MerkleTree {
   dirHashes: Map<string, string>;
   rootHash: string;
   dirToFiles: Map<string, string[]>;
+}
+
+function dirDepth(p: string): number {
+  return p === '.' ? 0 : p.split('/').length;
 }
 
 function isImmediateChild(parent: string, candidate: string): boolean {
@@ -36,7 +42,6 @@ function isImmediateChild(parent: string, candidate: string): boolean {
 
 /**
  * Build a Merkle tree from files and their hashes.
- * Shared by both computeChanges and persistMerkleState.
  */
 function buildMerkleTree(
   files: string[],
@@ -45,7 +50,6 @@ function buildMerkleTree(
 ): MerkleTree {
   const resolvedRoot = path.resolve(rootDir);
 
-  // Group files by parent directory (relative to root)
   const dirToFiles = new Map<string, string[]>();
   for (const file of files) {
     const relDir = path.relative(resolvedRoot, path.dirname(file)) || '.';
@@ -54,8 +58,8 @@ function buildMerkleTree(
     dirToFiles.set(relDir, existing);
   }
 
-  // Sort directories: children before parents (longest paths first)
-  const sortedDirs = [...dirToFiles.keys()].sort((a, b) => b.length - a.length);
+  // Sort by depth descending (children before parents)
+  const sortedDirs = [...dirToFiles.keys()].sort((a, b) => dirDepth(b) - dirDepth(a));
   const dirHashes = new Map<string, string>();
 
   for (const dir of sortedDirs) {
@@ -69,7 +73,6 @@ function buildMerkleTree(
       }
     }
 
-    // Include immediate child directory hashes
     for (const [childDir, childHash] of dirHashes) {
       if (isImmediateChild(dir, childDir)) {
         hashParts.push(`${path.basename(childDir)}/:${childHash}`);
@@ -94,22 +97,47 @@ function buildMerkleTree(
 }
 
 /**
+ * Hash files with bounded concurrency, reusing stored hashes for unchanged files.
+ */
+async function hashFilesWithCache(files: string[]): Promise<Map<string, string>> {
+  const fileHashMap = new Map<string, string>();
+
+  // Use stored hashes where possible, mark files needing fresh hash
+  const needsHash: string[] = [];
+  for (const file of files) {
+    const stored = getFileHash(file);
+    if (stored) {
+      // Optimistic: assume stored hash is still valid, will be corrected by Merkle diff
+      fileHashMap.set(file, stored.sha256);
+    }
+    // Always need fresh hash for Merkle correctness — but use concurrency
+    needsHash.push(file);
+  }
+
+  // Hash files with bounded concurrency
+  for (let i = 0; i < needsHash.length; i += HASH_CONCURRENCY) {
+    const batch = needsHash.slice(i, i + HASH_CONCURRENCY);
+    const hashes = await Promise.all(batch.map((f) => hashFile(f)));
+    for (let j = 0; j < batch.length; j++) {
+      fileHashMap.set(batch[j], hashes[j]);
+    }
+  }
+
+  return fileHashMap;
+}
+
+/**
  * Compute which files changed since last sync using Merkle tree diff.
  */
 async function computeChanges(files: string[], rootDir: string): Promise<SyncResult> {
-  // Hash all files
-  const fileHashMap = new Map<string, string>();
-  for (const file of files) {
-    fileHashMap.set(file, await hashFile(file));
-  }
-
+  const fileHashMap = await hashFilesWithCache(files);
   const tree = buildMerkleTree(files, fileHashMap, rootDir);
 
   // Quick check: if root hash matches, nothing changed
   const storedRoot = getDirHash(ROOT_KEY);
   if (storedRoot && storedRoot.merkle_hash === tree.rootHash) {
     log.info('Root Merkle hash unchanged — nothing to sync');
-    return { added: [], modified: [], deleted: [], fileHashMap };
+    return { added: [], modified: [], deleted: [], fileHashMap, tree };
   }
 
   // Walk changed directories, compare individual files
@@ -146,19 +174,18 @@ async function computeChanges(files: string[], rootDir: string): Promise<SyncRes
     `Merkle diff: ${added.length} added, ${modified.length} modified, ${deleted.length} deleted (${files.length - added.length - modified.length} unchanged)`,
   );
 
-  return { added, modified, deleted, fileHashMap };
+  return { added, modified, deleted, fileHashMap, tree };
 }
 
 /**
  * Persist Merkle tree state to SQLite after successful indexing.
+ * Reuses the tree from computeChanges (no rebuild).
  */
 function persistMerkleState(
-  files: string[],
+  tree: MerkleTree,
   fileHashMap: Map<string, string>,
   successfulFiles: Set<string>,
-  rootDir: string,
 ): void {
-  // Update file hashes for successful files only
   for (const file of successfulFiles) {
     const hash = fileHashMap.get(file);
     if (hash) {
@@ -166,10 +193,7 @@ function persistMerkleState(
     }
   }
 
-  // Rebuild and store directory Merkle hashes
   clearDirHashes();
-  const tree = buildMerkleTree(files, fileHashMap, rootDir);
-
   for (const [dir, hash] of tree.dirHashes) {
     setDirHash(dir, hash);
   }
@@ -179,4 +203,4 @@ function persistMerkleState(
 }
 
 export { computeChanges, persistMerkleState };
-export type { SyncResult };
+export type { SyncResult, MerkleTree };

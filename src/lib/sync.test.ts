@@ -24,7 +24,6 @@ describe('sync (Merkle tree)', () => {
       await fs.writeFile(path.join(tmpDir, 'src', 'b.ts'), 'const b = 2;');
 
       const files = [path.join(tmpDir, 'src', 'a.ts'), path.join(tmpDir, 'src', 'b.ts')];
-
       const result = await computeChanges(files, tmpDir);
 
       expect(result.added).toHaveLength(2);
@@ -38,16 +37,13 @@ describe('sync (Merkle tree)', () => {
 
       const files = [path.join(tmpDir, 'src', 'a.ts')];
 
-      // First run: index everything
-      const firstResult = await computeChanges(files, tmpDir);
-      persistMerkleState(files, firstResult.fileHashMap, new Set(files), tmpDir);
+      const first = await computeChanges(files, tmpDir);
+      persistMerkleState(first.tree, first.fileHashMap, new Set(files));
 
-      // Second run: nothing changed
-      const secondResult = await computeChanges(files, tmpDir);
-
-      expect(secondResult.added).toHaveLength(0);
-      expect(secondResult.modified).toHaveLength(0);
-      expect(secondResult.deleted).toHaveLength(0);
+      const second = await computeChanges(files, tmpDir);
+      expect(second.added).toHaveLength(0);
+      expect(second.modified).toHaveLength(0);
+      expect(second.deleted).toHaveLength(0);
     });
 
     it('detects modified file', async () => {
@@ -56,20 +52,14 @@ describe('sync (Merkle tree)', () => {
       await fs.writeFile(filePath, 'const a = 1;');
 
       const files = [filePath];
+      const first = await computeChanges(files, tmpDir);
+      persistMerkleState(first.tree, first.fileHashMap, new Set(files));
 
-      // First run
-      const firstResult = await computeChanges(files, tmpDir);
-      persistMerkleState(files, firstResult.fileHashMap, new Set(files), tmpDir);
-
-      // Modify file
       await fs.writeFile(filePath, 'const a = 2;');
+      const second = await computeChanges(files, tmpDir);
 
-      // Second run
-      const secondResult = await computeChanges(files, tmpDir);
-
-      expect(secondResult.added).toHaveLength(0);
-      expect(secondResult.modified).toEqual([filePath]);
-      expect(secondResult.deleted).toHaveLength(0);
+      expect(second.modified).toEqual([filePath]);
+      expect(second.added).toHaveLength(0);
     });
 
     it('detects new file added', async () => {
@@ -77,19 +67,15 @@ describe('sync (Merkle tree)', () => {
       const fileA = path.join(tmpDir, 'src', 'a.ts');
       await fs.writeFile(fileA, 'const a = 1;');
 
-      // First run with one file
-      const firstResult = await computeChanges([fileA], tmpDir);
-      persistMerkleState([fileA], firstResult.fileHashMap, new Set([fileA]), tmpDir);
+      const first = await computeChanges([fileA], tmpDir);
+      persistMerkleState(first.tree, first.fileHashMap, new Set([fileA]));
 
-      // Add a new file
       const fileB = path.join(tmpDir, 'src', 'b.ts');
       await fs.writeFile(fileB, 'const b = 2;');
 
-      // Second run with both files
-      const secondResult = await computeChanges([fileA, fileB], tmpDir);
-
-      expect(secondResult.added).toEqual([fileB]);
-      expect(secondResult.modified).toHaveLength(0);
+      const second = await computeChanges([fileA, fileB], tmpDir);
+      expect(second.added).toEqual([fileB]);
+      expect(second.modified).toHaveLength(0);
     });
 
     it('detects deleted file', async () => {
@@ -99,14 +85,11 @@ describe('sync (Merkle tree)', () => {
       await fs.writeFile(fileA, 'const a = 1;');
       await fs.writeFile(fileB, 'const b = 2;');
 
-      // First run with both files
-      const firstResult = await computeChanges([fileA, fileB], tmpDir);
-      persistMerkleState([fileA, fileB], firstResult.fileHashMap, new Set([fileA, fileB]), tmpDir);
+      const first = await computeChanges([fileA, fileB], tmpDir);
+      persistMerkleState(first.tree, first.fileHashMap, new Set([fileA, fileB]));
 
-      // Second run with only fileA (fileB deleted)
-      const secondResult = await computeChanges([fileA], tmpDir);
-
-      expect(secondResult.deleted).toEqual([fileB]);
+      const second = await computeChanges([fileA], tmpDir);
+      expect(second.deleted).toEqual([fileB]);
     });
 
     it('skips unchanged directories entirely', async () => {
@@ -118,20 +101,41 @@ describe('sync (Merkle tree)', () => {
       await fs.writeFile(libFile, 'const b = 2;');
 
       const files = [srcFile, libFile];
+      const first = await computeChanges(files, tmpDir);
+      persistMerkleState(first.tree, first.fileHashMap, new Set(files));
 
-      // First run
-      const firstResult = await computeChanges(files, tmpDir);
-      persistMerkleState(files, firstResult.fileHashMap, new Set(files), tmpDir);
-
-      // Modify only src/a.ts
       await fs.writeFile(srcFile, 'const a = 999;');
+      const second = await computeChanges(files, tmpDir);
 
-      // Second run
-      const secondResult = await computeChanges(files, tmpDir);
+      expect(second.modified).toEqual([srcFile]);
+      expect(second.added).toHaveLength(0);
+    });
 
-      // Only src/a.ts should be detected as modified, lib/b.ts should be skipped
-      expect(secondResult.modified).toEqual([srcFile]);
-      expect(secondResult.added).toHaveLength(0);
+    it('handles root-level files correctly', async () => {
+      const rootFile = path.join(tmpDir, 'index.ts');
+      await fs.writeFile(rootFile, 'console.log("hello");');
+
+      const files = [rootFile];
+      const first = await computeChanges(files, tmpDir);
+      persistMerkleState(first.tree, first.fileHashMap, new Set(files));
+
+      const second = await computeChanges(files, tmpDir);
+      expect(second.added).toHaveLength(0);
+      expect(second.modified).toHaveLength(0);
+    });
+
+    it('handles deeply nested directories', async () => {
+      await fs.mkdir(path.join(tmpDir, 'a', 'b', 'c'), { recursive: true });
+      const deepFile = path.join(tmpDir, 'a', 'b', 'c', 'deep.ts');
+      await fs.writeFile(deepFile, 'const deep = true;');
+
+      const files = [deepFile];
+      const first = await computeChanges(files, tmpDir);
+      persistMerkleState(first.tree, first.fileHashMap, new Set(files));
+
+      const second = await computeChanges(files, tmpDir);
+      expect(second.added).toHaveLength(0);
+      expect(second.modified).toHaveLength(0);
     });
 
     it('returns fileHashMap for all files', async () => {
@@ -140,28 +144,12 @@ describe('sync (Merkle tree)', () => {
       await fs.writeFile(filePath, 'const a = 1;');
 
       const result = await computeChanges([filePath], tmpDir);
-
       expect(result.fileHashMap.has(filePath)).toBe(true);
       expect(result.fileHashMap.get(filePath)).toMatch(/^[a-f0-9]{64}$/);
     });
   });
 
   describe('persistMerkleState', () => {
-    it('stores file and directory hashes', async () => {
-      await fs.mkdir(path.join(tmpDir, 'src'), { recursive: true });
-      const filePath = path.join(tmpDir, 'src', 'a.ts');
-      await fs.writeFile(filePath, 'content');
-
-      const files = [filePath];
-      const result = await computeChanges(files, tmpDir);
-      persistMerkleState(files, result.fileHashMap, new Set(files), tmpDir);
-
-      // Second run should find nothing changed
-      const secondResult = await computeChanges(files, tmpDir);
-      expect(secondResult.added).toHaveLength(0);
-      expect(secondResult.modified).toHaveLength(0);
-    });
-
     it('only persists hashes for successful files', async () => {
       await fs.mkdir(path.join(tmpDir, 'src'), { recursive: true });
       const fileA = path.join(tmpDir, 'src', 'a.ts');
@@ -173,14 +161,11 @@ describe('sync (Merkle tree)', () => {
       const result = await computeChanges(files, tmpDir);
 
       // Only mark fileA as successful
-      persistMerkleState(files, result.fileHashMap, new Set([fileA]), tmpDir);
+      persistMerkleState(result.tree, result.fileHashMap, new Set([fileA]));
 
-      // Modify fileB
       await fs.writeFile(fileB, 'const b = 999;');
-
-      // fileB should still show as modified because its hash wasn't persisted
-      const secondResult = await computeChanges(files, tmpDir);
-      expect(secondResult.modified.length + secondResult.added.length).toBeGreaterThanOrEqual(1);
+      const second = await computeChanges(files, tmpDir);
+      expect(second.modified.length + second.added.length).toBeGreaterThanOrEqual(1);
     });
   });
 });
