@@ -66,6 +66,12 @@ function initDb(rootDir: string): Database.Database {
 
       CREATE INDEX IF NOT EXISTS idx_chunk_cache_file_path
         ON chunk_cache(file_path);
+
+      CREATE TABLE IF NOT EXISTS dir_hashes (
+        dir_path TEXT PRIMARY KEY,
+        merkle_hash TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
     `);
   } catch (err: unknown) {
     // Clean up partial state so next initDb attempt doesn't return a broken instance
@@ -152,6 +158,38 @@ function deleteChunksByFile(filePath: string): ChunkCacheRow[] {
   return txn();
 }
 
+// --- dir_hashes operations ---
+
+interface DirHashRow {
+  dir_path: string;
+  merkle_hash: string;
+  updated_at: number;
+}
+
+function getDirHash(dirPath: string): DirHashRow | undefined {
+  const row = getDb().prepare('SELECT * FROM dir_hashes WHERE dir_path = ?').get(dirPath);
+  return row as DirHashRow | undefined;
+}
+
+function setDirHash(dirPath: string, merkleHash: string): void {
+  getDb()
+    .prepare(
+      `INSERT INTO dir_hashes (dir_path, merkle_hash, updated_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(dir_path) DO UPDATE SET merkle_hash = excluded.merkle_hash, updated_at = excluded.updated_at`,
+    )
+    .run(dirPath, merkleHash, Date.now());
+}
+
+function getAllDirHashes(): DirHashRow[] {
+  const rows = getDb().prepare('SELECT * FROM dir_hashes').all();
+  return rows as DirHashRow[];
+}
+
+function clearDirHashes(): void {
+  getDb().prepare('DELETE FROM dir_hashes').run();
+}
+
 // --- lifecycle ---
 
 function closeDb(): void {
@@ -179,5 +217,9 @@ export {
   getChunksByFile,
   upsertChunk,
   deleteChunksByFile,
+  getDirHash,
+  setDirHash,
+  getAllDirHashes,
+  clearDirHashes,
 };
-export type { FileHashRow, ChunkCacheRow };
+export type { FileHashRow, ChunkCacheRow, DirHashRow };
