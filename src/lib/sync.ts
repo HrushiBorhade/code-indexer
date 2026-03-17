@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { hashFile, hashString } from './hash.ts';
 import {
+  getDb,
   getFileHash,
   setFileHash,
   getAllFileHashes,
@@ -185,30 +186,34 @@ function persistMerkleState(
   successfulFiles: Set<string>,
   rootDir: string,
 ): void {
-  for (const file of successfulFiles) {
-    const hash = fileHashMap.get(file);
-    if (hash) {
-      setFileHash(file, hash);
+  // Wrap entire persist in a transaction — either all state is saved or none
+  const db = getDb();
+  db.transaction(() => {
+    for (const file of successfulFiles) {
+      const hash = fileHashMap.get(file);
+      if (hash) {
+        setFileHash(file, hash);
+      }
     }
-  }
 
-  // Rebuild tree using only files with persisted hashes to avoid
-  // caching dir hashes that include failed files
-  const persistedHashMap = new Map<string, string>();
-  for (const file of files) {
-    const stored = getFileHash(file);
-    if (stored) {
-      persistedHashMap.set(file, stored.sha256);
+    // Rebuild tree using only files with persisted hashes to avoid
+    // caching dir hashes that include failed files
+    const persistedHashMap = new Map<string, string>();
+    for (const file of files) {
+      const stored = getFileHash(file);
+      if (stored) {
+        persistedHashMap.set(file, stored.sha256);
+      }
     }
-  }
 
-  const tree = buildMerkleTree(files, persistedHashMap, rootDir);
+    const tree = buildMerkleTree(files, persistedHashMap, rootDir);
 
-  clearDirHashes();
-  for (const [dir, hash] of tree.dirHashes) {
-    setDirHash(dir, hash);
-  }
-  setDirHash(ROOT_KEY, tree.rootHash);
+    clearDirHashes();
+    for (const [dir, hash] of tree.dirHashes) {
+      setDirHash(dir, hash);
+    }
+    setDirHash(ROOT_KEY, tree.rootHash);
+  })();
 
   log.info('Merkle tree state persisted to SQLite');
 }

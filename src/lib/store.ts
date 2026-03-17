@@ -96,6 +96,9 @@ async function qdrantRequest(
     try {
       data = JSON.parse(text);
     } catch {
+      log.warn(
+        `Qdrant returned non-JSON response (status ${response.status}): ${text.slice(0, 200)}`,
+      );
       data = text;
     }
 

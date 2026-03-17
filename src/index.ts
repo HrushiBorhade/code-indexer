@@ -75,7 +75,16 @@ async function indexAction(targetDir: string): Promise<void> {
   log.info(`Found ${files.length} files (${breakdown})`);
 
   // --- Merkle tree diff: detect added, modified, deleted files ---
-  const syncResult = await computeChanges(files, resolvedDir);
+  let syncResult;
+  try {
+    syncResult = await computeChanges(files, resolvedDir);
+  } catch (err: unknown) {
+    log.error(
+      `Failed to compute file changes: ${err instanceof Error ? err.message : err}. If this persists, try deleting .code-indexer/cache.db and re-indexing.`,
+    );
+    process.exitCode = 1;
+    return;
+  }
   const changedFiles = [...syncResult.added, ...syncResult.modified];
 
   // Clean up deleted files
