@@ -7,17 +7,9 @@ import { chunkFile } from './chunker/index.ts';
 import type { Chunk } from './chunker/types.ts';
 import { getLanguage } from './lib/languages.ts';
 import { embedChunks } from './lib/embedder.ts';
-import { hashFile, hashString } from './lib/hash.ts';
-import {
-  initDb,
-  closeDb,
-  getFileHash,
-  setFileHash,
-  deleteFileHash,
-  getAllFileHashes,
-  upsertChunk,
-  deleteChunksByFile,
-} from './lib/db.ts';
+import { hashString } from './lib/hash.ts';
+import { initDb, closeDb, upsertChunk, deleteChunksByFile, deleteFileHash } from './lib/db.ts';
+import { computeChanges, persistMerkleState } from './lib/sync.ts';
 import { ensureCollection, upsertPoints, deletePoints } from './lib/store.ts';
 import type { UpsertPoint } from './lib/store.ts';
 import { semanticSearch } from './lib/search.ts';
@@ -82,35 +74,23 @@ async function indexAction(targetDir: string): Promise<void> {
 
   log.info(`Found ${files.length} files (${breakdown})`);
 
-  // --- Hash check: skip unchanged files, cache hashes to avoid double reads ---
-  const changedFiles: string[] = [];
-  const fileHashMap = new Map<string, string>();
+  // --- Merkle tree diff: detect added, modified, deleted files ---
+  const syncResult = await computeChanges(files, resolvedDir);
+  const changedFiles = [...syncResult.added, ...syncResult.modified];
 
-  for (const file of files) {
-    const currentHash = await hashFile(file);
-    fileHashMap.set(file, currentHash);
-    const cached = getFileHash(file);
-    if (cached && cached.sha256 === currentHash) continue;
-    changedFiles.push(file);
-  }
-
-  // --- Detect deleted files: delete from Qdrant first, then SQLite ---
-  const currentFileSet = new Set(files);
-  const storedHashes = getAllFileHashes();
-  const deletedFiles = storedHashes.filter((row) => !currentFileSet.has(row.file_path));
-
-  if (deletedFiles.length > 0) {
-    log.info(`Removing ${deletedFiles.length} deleted files from index...`);
-    for (const row of deletedFiles) {
+  // Clean up deleted files
+  if (syncResult.deleted.length > 0) {
+    log.info(`Removing ${syncResult.deleted.length} deleted files from index...`);
+    for (const file of syncResult.deleted) {
       try {
-        const oldChunks = deleteChunksByFile(row.file_path);
+        const oldChunks = deleteChunksByFile(file);
         if (oldChunks.length > 0) {
           await deletePoints(oldChunks.map((c) => c.qdrant_id));
         }
-        deleteFileHash(row.file_path);
+        deleteFileHash(file);
       } catch (err: unknown) {
         log.error(
-          `Failed to clean up deleted file ${row.file_path}: ${err instanceof Error ? err.message : err}`,
+          `Failed to clean up deleted file ${file}: ${err instanceof Error ? err.message : err}`,
         );
       }
     }
@@ -211,13 +191,8 @@ async function indexAction(targetDir: string): Promise<void> {
     upsertChunk(chunkHashes[i], qdrantIds[i], chunk.filePath, chunk.lineStart, chunk.lineEnd);
   }
 
-  // Only update hashes for files that chunked successfully — errored files will retry next run
-  for (const file of successfulFiles) {
-    const cachedHash = fileHashMap.get(file);
-    if (cachedHash) {
-      setFileHash(file, cachedHash);
-    }
-  }
+  // Persist Merkle tree state — only saves hashes for successful files
+  persistMerkleState(syncResult.tree, syncResult.fileHashMap, successfulFiles);
 
   log.info(`Done in ${Date.now() - startTime}ms`);
   if (erroredFiles > 0) process.exitCode = 1;
