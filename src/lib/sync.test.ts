@@ -38,7 +38,7 @@ describe('sync (Merkle tree)', () => {
       const files = [path.join(tmpDir, 'src', 'a.ts')];
 
       const first = await computeChanges(files, tmpDir);
-      persistMerkleState(first.tree, first.fileHashMap, new Set(files));
+      persistMerkleState(files, first.fileHashMap, new Set(files), tmpDir);
 
       const second = await computeChanges(files, tmpDir);
       expect(second.added).toHaveLength(0);
@@ -53,7 +53,7 @@ describe('sync (Merkle tree)', () => {
 
       const files = [filePath];
       const first = await computeChanges(files, tmpDir);
-      persistMerkleState(first.tree, first.fileHashMap, new Set(files));
+      persistMerkleState(files, first.fileHashMap, new Set(files), tmpDir);
 
       await fs.writeFile(filePath, 'const a = 2;');
       const second = await computeChanges(files, tmpDir);
@@ -68,7 +68,7 @@ describe('sync (Merkle tree)', () => {
       await fs.writeFile(fileA, 'const a = 1;');
 
       const first = await computeChanges([fileA], tmpDir);
-      persistMerkleState(first.tree, first.fileHashMap, new Set([fileA]));
+      persistMerkleState([fileA], first.fileHashMap, new Set([fileA]), tmpDir);
 
       const fileB = path.join(tmpDir, 'src', 'b.ts');
       await fs.writeFile(fileB, 'const b = 2;');
@@ -86,7 +86,7 @@ describe('sync (Merkle tree)', () => {
       await fs.writeFile(fileB, 'const b = 2;');
 
       const first = await computeChanges([fileA, fileB], tmpDir);
-      persistMerkleState(first.tree, first.fileHashMap, new Set([fileA, fileB]));
+      persistMerkleState([fileA, fileB], first.fileHashMap, new Set([fileA, fileB]), tmpDir);
 
       const second = await computeChanges([fileA], tmpDir);
       expect(second.deleted).toEqual([fileB]);
@@ -102,7 +102,7 @@ describe('sync (Merkle tree)', () => {
 
       const files = [srcFile, libFile];
       const first = await computeChanges(files, tmpDir);
-      persistMerkleState(first.tree, first.fileHashMap, new Set(files));
+      persistMerkleState(files, first.fileHashMap, new Set(files), tmpDir);
 
       await fs.writeFile(srcFile, 'const a = 999;');
       const second = await computeChanges(files, tmpDir);
@@ -117,7 +117,7 @@ describe('sync (Merkle tree)', () => {
 
       const files = [rootFile];
       const first = await computeChanges(files, tmpDir);
-      persistMerkleState(first.tree, first.fileHashMap, new Set(files));
+      persistMerkleState(files, first.fileHashMap, new Set(files), tmpDir);
 
       const second = await computeChanges(files, tmpDir);
       expect(second.added).toHaveLength(0);
@@ -131,7 +131,7 @@ describe('sync (Merkle tree)', () => {
 
       const files = [deepFile];
       const first = await computeChanges(files, tmpDir);
-      persistMerkleState(first.tree, first.fileHashMap, new Set(files));
+      persistMerkleState(files, first.fileHashMap, new Set(files), tmpDir);
 
       const second = await computeChanges(files, tmpDir);
       expect(second.added).toHaveLength(0);
@@ -161,7 +161,7 @@ describe('sync (Merkle tree)', () => {
       const result = await computeChanges(files, tmpDir);
 
       // Only mark fileA as successful
-      persistMerkleState(result.tree, result.fileHashMap, new Set([fileA]));
+      persistMerkleState(files, result.fileHashMap, new Set([fileA]), tmpDir);
 
       await fs.writeFile(fileB, 'const b = 999;');
       const second = await computeChanges(files, tmpDir);

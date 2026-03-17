@@ -192,7 +192,7 @@ async function indexAction(targetDir: string): Promise<void> {
   }
 
   // Persist Merkle tree state — only saves hashes for successful files
-  persistMerkleState(syncResult.tree, syncResult.fileHashMap, successfulFiles);
+  persistMerkleState(files, syncResult.fileHashMap, successfulFiles, resolvedDir);
 
   log.info(`Done in ${Date.now() - startTime}ms`);
   if (erroredFiles > 0) process.exitCode = 1;
