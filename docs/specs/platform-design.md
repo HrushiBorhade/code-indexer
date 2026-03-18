@@ -1,4 +1,4 @@
-# CodeIndexer Cloud Platform — Design Spec
+# CodeIndexer Platform — Design Spec
 
 > Date: 2026-03-18
 > Status: Draft
