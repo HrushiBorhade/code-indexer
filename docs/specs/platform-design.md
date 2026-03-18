@@ -862,6 +862,7 @@ Center panel: Code rendered with syntax highlighting (Monaco or CodeMirror)
 |------|---------|-----------|
 | **@vercel/otel** | Automatic route tracing, server component spans | Included with Vercel |
 | **Vercel Analytics** | Web Vitals (LCP, FID, CLS), page views, navigation timing | 2.5K events/mo free |
+| **PostHog** | Product analytics, feature flags, A/B testing, funnels, user paths | 1M events/mo free |
 | **Microsoft Clarity** | Session recordings, heatmaps, dead click detection, rage click detection | Unlimited free |
 | **Sentry** | Error tracking + source maps + performance monitoring | 5K events/mo free |
 
@@ -880,6 +881,7 @@ Center panel: Code rendered with syntax highlighting (Monaco or CodeMirror)
 **Next.js (Vercel) — Frontend:**
 - `@vercel/otel` — automatic route + RSC tracing
 - Vercel Analytics — Core Web Vitals, page load performance
+- PostHog — product analytics, feature flags, A/B testing, funnels, user paths
 - Microsoft Clarity — session replays for UX debugging (how users interact with web IDE, chat)
 - Sentry — error tracking with source maps, replay integration
 - Custom spans: webhook processing time, R2 file proxy latency
