@@ -1,114 +1,109 @@
 # CodeIndexer
 
 ## What
-A first-principles Cursor-inspired semantic code search engine. Indexes codebases using AST chunking, vector embeddings, and hybrid search (semantic + ripgrep with RRF fusion).
+A Cursor-inspired semantic code search engine and AI-powered code assistant platform. Started as a CLI tool (Phases 1-6, complete), now building the web platform.
 
-## Stack
+## Current State
+- **CLI (complete):** 6 phases shipped — AST chunking, embeddings, vector store, semantic search, hybrid search (RRF), incremental sync (Merkle trees). 152 tests passing.
+- **Platform (in progress):** Design spec merged at `docs/specs/platform-design.md`. Implementation starting.
+
+## CLI Stack (src/ — existing, working)
 - **Runtime:** Node.js + tsx
-- **Parsing:** tree-sitter (native N-API) + tree-sitter-typescript
-- **Embeddings:** Voyage AI `voyage-code-3` (1024-dim)
-- **Vector DB:** Qdrant Cloud (HNSW index, cosine distance)
-- **Local DB:** better-sqlite3 (file hashes + chunk cache)
-- **File discovery:** git ls-files (primary) + fast-glob (fallback)
+- **Parsing:** tree-sitter (native N-API) + grammars for TS/JS/Python/Rust/Go/CSS
+- **Embeddings:** OpenAI `text-embedding-3-small` (1536-dim). Also supports Voyage AI `voyage-code-3` (1024-dim).
+- **Vector DB:** Qdrant Cloud (HNSW, cosine distance)
+- **Local DB:** better-sqlite3 (file_hashes, chunk_cache, dir_hashes tables)
 - **Text search:** ripgrep via execFile
-- **Language:** TypeScript
+- **Hybrid search:** RRF fusion (k=60) merging semantic + ripgrep results
 
-## Architecture
+## Platform Architecture (docs/specs/platform-design.md)
 
-Six phases, each teaching one concept:
+Three services:
+1. **Next.js (Vercel)** — UI, auth, webhooks, dashboard, web IDE
+2. **Hono API (Fly.io)** — Chat/agent SSE streaming, search API, file serving
+3. **Trigger.dev (Cloud)** — Background indexing, sync, cleanup
 
-1. **File walking & AST chunking** — `walker.ts`, `chunker.ts`
-2. **Embeddings** — `embedder.ts` (Voyage AI, batched)
-3. **Vector store + SQLite cache** — `store.ts`, `db.ts`
-4. **Semantic search** — `search.ts` (query embedding → Qdrant top-K → read from disk)
-5. **Hybrid search** — `grep.ts`, `merge.ts` (ripgrep + semantic, RRF fusion)
-6. **Incremental sync** — `hash.ts`, `sync.ts` (Merkle tree, two-level diff)
+Data layer:
+- **Neon Postgres** (Drizzle ORM) — users, repos, hashes, conversations, jobs
+- **Qdrant Cloud** — vectors + chunk content in payload, BM25 full-text search
+- **Cloudflare R2** — repo tarballs, exploded files, file-tree.json
+- **Claude API** — chat/agent (Sonnet default, Opus opt-in)
+- **OpenAI API** — embeddings only
 
-## File Structure
+Key decisions:
+- **Auth:** Better Auth (GitHub OAuth) + GitHub App (installation tokens, push webhooks, RS256 JWT)
+- **Chat streaming:** Direct SSE from Hono → Claude (NOT via task queue). Users stare at streaming = persistent server. Background jobs = task queue.
+- **Search:** Qdrant vector + BM25 on `content` payload → RRF merge (replaces ripgrep in cloud)
+- **Re-index:** GitHub push webhook → Trigger.dev → fresh shallow clone → Merkle diff → re-embed changed only
+- **Storage:** Chunk content stored in Qdrant payload (instant search results). Full files in R2 (web IDE).
+- **tree-sitter:** Must switch from native N-API to web-tree-sitter (WASM) for Trigger.dev Linux containers.
+- **sync.ts:** Needs significant refactor — sync SQLite transactions to async Drizzle. Extract pure Merkle logic into SyncStorage interface.
+- **Security:** RS256 asymmetric JWT (Next.js signs, Hono verifies with public key only), middleware-enforced repo ownership on every endpoint, path sanitization on agent tools, global cost circuit breaker for Claude API.
+
+Environments: Preview (Neon branch per PR) → Staging → Production
+CI/CD: GitHub Actions (format, lint, typecheck, test, build) on every PR. Auto-deploy to staging/production.
+Observability: Vercel OTEL + Analytics + PostHog + Clarity + Sentry (frontend). OpenTelemetry → Grafana Cloud (API/workers). Better Stack uptime + Slack alerting.
+
+## Build Phases (Platform)
+1. **Foundation** — Monorepo (Turborepo), Drizzle schema, Better Auth, GitHub App, dashboard
+2. **Indexing** — web-tree-sitter, Trigger.dev tasks, Merkle refactor, R2 uploads
+3. **Search + Web IDE** — Hono API on Fly.io, JWT bridge, search, file viewer, rate limiting
+4. **Chat Agent** — SSE streaming, Claude tool use, conversations, cost circuit breaker
+5. **Polish** — Sentry, OTEL, cleanup tasks, webhook replay, emails
+6. **Coding Agent** (future) — multi-step editing, PR creation
+
+## File Structure (CLI — existing)
 ```
 src/
-├── languages.ts    # LANGUAGE_MAP, AST_LANGUAGES, TEXT_LANGUAGES
-├── walker.ts       # git ls-files (primary) + fast-glob (fallback) + binary check
-├── chunker.ts      # tree-sitter AST parsing + text chunking (md/json/yaml/sql)
-├── hash.ts         # SHA-256 via Node crypto
-├── embedder.ts     # Voyage AI batched embeddings
-├── db.ts           # better-sqlite3, file_hashes + chunk_cache tables
-├── store.ts        # Qdrant upsert + collection init
-├── search.ts       # query, retrieve, merge
-├── grep.ts         # ripgrep via execFile
-├── merge.ts        # RRF fusion algorithm
-└── sync.ts         # incremental two-level diff
-index.ts            # CLI entrypoint: index | search | watch
+├── chunker/        # AST chunking (tree-sitter) + text chunking (md/json/yaml/sql)
+├── config/env.ts   # Zod env validation
+├── lib/
+│   ├── walker.ts   # git ls-files + fast-glob fallback
+│   ├── embedder.ts # OpenAI/Voyage batched embeddings
+│   ├── hash.ts     # SHA-256
+│   ├── db.ts       # better-sqlite3 (file_hashes, chunk_cache, dir_hashes)
+│   ├── store.ts    # Qdrant upsert/search/delete
+│   ├── search.ts   # semantic search (embed query → Qdrant top-K → read from disk)
+│   ├── grep.ts     # ripgrep via execFile
+│   ├── merge.ts    # RRF fusion
+│   ├── sync.ts     # Merkle tree diff (computeChanges, persistMerkleState)
+│   └── shutdown.ts # Graceful shutdown
+├── utils/logger.ts # Pino logger
+└── index.ts        # CLI entrypoint (commander)
 ```
 
-## File Categories
-- **AST-chunkable (code):** .ts .tsx .js .jsx .mjs .cjs .py .rs .go .css .graphql .gql
-- **Text-chunkable (non-code):** .md .mdx (by headings), .json .yaml .yml .toml (by top-level keys), .sql (by statements)
-- **Never index:** Anything in .gitignore (primary filter), plus binary file check as safety net
-
-## Chunking Strategies
-- **Code files:** tree-sitter AST → top-level nodes (function_declaration, class_declaration, etc.)
-- **Markdown:** split on `## heading` boundaries
-- **JSON/YAML/TOML:** small files → single chunk; large files → top-level keys
-- **SQL:** split on semicolons, keep preceding comments
-- **Binary check:** null byte in first 512 bytes → skip file regardless of extension
-
-## Language-Specific AST Node Types
-- **TypeScript/JS:** function_declaration, class_declaration, lexical_declaration, export_statement, interface_declaration, type_alias_declaration, enum_declaration
-- **Python:** function_definition, class_definition, decorated_definition
-- **Rust:** function_item, impl_item, struct_item, enum_item, trait_item
-
-## Build Order (Phase 1)
-1. TypeScript only → full pipeline end-to-end
-2. Add Python → different grammar node types
-3. Add Markdown → heading chunker (different code path)
-4. Add JSON/YAML → fallback/simple case
-5. Everything else → mechanical additions to LANGUAGE_MAP
-
-## Key Design Decisions
-- **tree-sitter native over web-tree-sitter** — native N-API works on Node darwin-arm64; simpler API (sync init, no WASM path management); same approach Cursor uses in production.
-- **git ls-files over manual ignore lists** — .gitignore already defines what's noise. Primary filter via `git ls-files --cached --others --exclude-standard`. Manual ignore list as fallback for non-git dirs only.
-- **Code never stored in Qdrant** — only pointers (filePath + line range). Code read from disk at query time. Same privacy model as Cursor.
-- **Two-level caching** — file-level SHA-256 to detect changed files, chunk-level SHA-256 to skip re-embedding unchanged chunks.
-- **RRF fusion (k=60)** — merges semantic + grep rankings without score normalization. `score = 1/(k + rank)`.
-
-## Node equivalents (migrated from Bun)
-| Concept | Implementation |
-|---|---|
-| File reading | `fs.readFile(path, 'utf-8')` or `fs.readFileSync(path, 'utf-8')` |
-| File discovery | `fast-glob` or `git ls-files` via `execFile` |
-| Subprocess | `execFile` from `child_process` (never use `exec` — shell injection risk) |
-| SQLite | `better-sqlite3` |
-| Run scripts | `npx tsx index.ts` |
-| Crypto | `crypto.createHash('sha256')` |
-
-## SQLite Schema
-```sql
-CREATE TABLE file_hashes (
-  file_path TEXT PRIMARY KEY, sha256 TEXT NOT NULL, updated_at INTEGER NOT NULL
-);
-CREATE TABLE chunk_cache (
-  chunk_hash TEXT PRIMARY KEY, qdrant_id TEXT NOT NULL,
-  file_path TEXT NOT NULL, line_start INTEGER NOT NULL, line_end INTEGER NOT NULL
-);
+## Platform Monorepo Structure (planned)
+```
+apps/
+├── web/        # Next.js (Vercel)
+├── api/        # Hono (Fly.io)
+└── trigger/    # Trigger.dev tasks + crons + emails
+packages/
+├── core/       # Existing pipeline code (from src/)
+├── db/         # Drizzle schema + Neon client
+├── email/      # React Email templates
+└── config/     # Shared env validation (per-service .extend())
 ```
 
 ## CLI Usage
 ```bash
 npx tsx index.ts index          # index codebase
 npx tsx index.ts search "query" # search with --mode semantic|grep|hybrid
-npx tsx index.ts watch          # live re-indexing via fs.watch
+npx tsx index.ts watch          # live re-indexing
 ```
 
-## Environment Variables
-```
-VOYAGE_API_KEY=...
-QDRANT_URL=...
-QDRANT_KEY=...
+## Commands
+```bash
+npm run format:check  # Prettier
+npm run lint          # ESLint
+npm run typecheck     # tsc --noEmit
+npm test              # Vitest (152 tests)
+npm run build         # tsc
 ```
 
 ## Conventions
-- User is learning — explain concepts before coding
-- Build simplest working version first, then iterate
-- Run first-principles checkpoint after each phase before moving on
-- Reference Cursor blog posts for real-world context
+- NEVER add Co-Authored-By, "Generated with Claude Code", or any AI attribution to commits, PRs, or issues
+- Always run /commit-ready BEFORE pushing or creating PRs, never after
+- User is learning backend/infra — explain concepts before coding
+- Build simplest working version first, iterate
+- Full platform spec at docs/specs/platform-design.md — refer to it for all architecture decisions
