@@ -1436,7 +1436,126 @@ export const baseEnv = z.object({
 
 ---
 
-## 15. Cost Estimate (Early Stage — <100 users)
+## 15. CI/CD Pipeline & Environments
+
+### 15.1 Environments
+
+| Environment | Purpose | When deployed | Data |
+|-------------|---------|--------------|------|
+| **Preview** | PR review — every PR gets its own deployment | On every PR push | Shared dev database (Neon branch) |
+| **Staging** | Pre-production validation, integration testing | On merge to `staging` branch | Dedicated staging database + Qdrant collection |
+| **Production** | Live users | On merge to `main` | Production database + Qdrant collection |
+
+**Neon branching** is key here — every preview environment gets an instant copy-on-write database branch. Zero cost, instant creation, full schema parity with production.
+
+### 15.2 Per-Service Deployment
+
+| Service | Preview | Staging | Production |
+|---------|---------|---------|------------|
+| **Next.js (Vercel)** | Automatic preview deploy per PR (Vercel built-in) | Deploy on `staging` branch push | Deploy on `main` branch push |
+| **Hono API (Fly.io)** | N/A (PR previews hit staging API) | `fly deploy --config fly.staging.toml` | `fly deploy --config fly.production.toml` |
+| **Trigger.dev** | N/A (PR previews use staging tasks) | `npx trigger.dev deploy --env staging` | `npx trigger.dev deploy --env production` |
+
+### 15.3 GitHub Actions Workflows
+
+```
+.github/workflows/
+├── ci.yml              # Runs on every PR
+├── deploy-staging.yml  # Runs on merge to staging
+└── deploy-prod.yml     # Runs on merge to main
+```
+
+**`ci.yml` — runs on every PR push:**
+```yaml
+name: CI
+on:
+  pull_request:
+    branches: [main, staging]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+```
+
+**`deploy-staging.yml` — on merge to `staging`:**
+```yaml
+name: Deploy Staging
+on:
+  push:
+    branches: [staging]
+
+jobs:
+  deploy-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --config fly.staging.toml --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  deploy-trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci
+      - run: npx trigger.dev deploy --env staging
+        env:
+          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+
+  # Vercel deploys automatically via Git integration — no action needed
+```
+
+**`deploy-prod.yml` — on merge to `main`:**
+Same as staging but with `fly.production.toml` and `--env production`.
+
+### 15.4 Environment Variables Per Environment
+
+Each environment gets its own set of secrets:
+
+| Variable | Preview | Staging | Production |
+|----------|---------|---------|------------|
+| `DATABASE_URL` | Neon branch URL (auto-created) | Staging Neon DB | Production Neon DB |
+| `QDRANT_URL` | Staging Qdrant | Staging Qdrant | Production Qdrant |
+| `R2_BUCKET` | `codeindexer-staging` | `codeindexer-staging` | `codeindexer-prod` |
+| `OPENAI_API_KEY` | Shared dev key | Staging key | Production key |
+| `ANTHROPIC_API_KEY` | Shared dev key | Staging key | Production key |
+| `GITHUB_APP_*` | Dev GitHub App | Staging GitHub App | Production GitHub App |
+| `JWT_PRIVATE_KEY` | Dev keypair | Staging keypair | Production keypair |
+
+**Separate GitHub Apps per environment** — prevents staging webhooks from triggering production re-indexes.
+
+### 15.5 Branch Strategy
+
+```
+main (production)
+  ↑ PR merge (after staging validation)
+staging
+  ↑ PR merge (after CI passes)
+feature/xyz (development)
+```
+
+- Feature branches → PR against `staging`
+- CI runs on every PR push (format, lint, typecheck, test, build)
+- Merge to `staging` → auto-deploy to staging environment
+- Validate on staging → PR from `staging` to `main`
+- Merge to `main` → auto-deploy to production
+
+---
+
+## 16. Cost Estimate (Early Stage — <100 users)
 
 | Service | Tier | Monthly cost | First paid upgrade trigger |
 |---------|------|-------------|--------------------------|
