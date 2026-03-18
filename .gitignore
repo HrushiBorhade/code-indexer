@@ -5,3 +5,4 @@ dist/
 *.wasm
 *.tsbuildinfo
 .code-indexer/
+.superpowers/
