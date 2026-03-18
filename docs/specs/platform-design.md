@@ -37,7 +37,7 @@ Three services, clean separation of concerns:
        ▼              ▼                        ▼
 ┌──────────────┐ ┌──────────────────┐ ┌────────────────────────┐
 │  Next.js     │ │  Hono API        │ │  Trigger.dev           │
-│  (Vercel)    │ │  (Railway)       │ │  (Cloud)               │
+│  (Vercel)    │ │  (Fly.io)       │ │  (Cloud)               │
 │              │ │                  │ │                        │
 │  - Auth      │ │  - Chat stream   │ │  - index-repo          │
 │  - Dashboard │ │  - Agent stream  │ │  - sync-repo           │
@@ -74,7 +74,7 @@ Three services, clean separation of concerns:
 | Service | Why it exists | Deployment |
 |---------|--------------|------------|
 | **Next.js (Vercel)** | UI rendering, auth, GitHub webhook receiver, dashboard. Serverless — scales to zero, no cost when idle. | Vercel free tier |
-| **Hono API (Railway/Fly/EC2)** | Chat/agent streaming, search API, file serving. Persistent server — no timeouts, direct SSE to client. Required because users stare at streaming responses. | Railway/Fly/EC2 (~$5/mo) |
+| **Hono API (Fly.io)** | Chat/agent streaming, search API, file serving. Persistent server — no timeouts, direct SSE to client. Required because users stare at streaming responses. | Fly.io (~$5/mo) |
 | **Trigger.dev** | Repo indexing, incremental sync, cleanup. Background jobs — fire and forget, retries, queues. | Trigger.dev Cloud (free tier) |
 
 ---
@@ -388,7 +388,7 @@ r2-bucket: codeindexer-repos
 
 **Does NOT handle:** Chat streaming, search queries, agent execution.
 
-### 8.2 Hono API (Railway)
+### 8.2 Hono API (Fly.io)
 
 **Responsibilities:**
 - Chat streaming (direct SSE to client)
@@ -871,7 +871,7 @@ Center panel: Code rendered with syntax highlighting (Monaco or CodeMirror)
 - Sentry for error tracking + source maps
 - Custom spans: webhook processing, R2 reads
 
-**Hono API (Railway):**
+**Hono API (Fly.io):**
 - OpenTelemetry Node.js SDK
 - Custom spans: embed latency, Qdrant search latency, Claude API latency
 - Per-chat-turn metrics: tokens used, tool calls made, total latency
@@ -1094,12 +1094,12 @@ function sanitizePath(userPath: string): string {
 |--------|----------|-------------|
 | GitHub App private key (.pem) | Vercel env vars (encrypted) | Next.js (webhook handler, token generation) |
 | GitHub App webhook secret | Vercel env vars | Next.js (webhook verification) |
-| Better Auth JWT secret | Vercel + Railway env vars | Next.js (sign), Hono (verify) |
-| OpenAI API key | Railway + Trigger.dev env vars | Hono (embed queries), Workers (embed chunks) |
-| Qdrant API key | Railway + Trigger.dev env vars | Hono (search), Workers (upsert) |
-| R2 access key + secret | Vercel + Railway + Trigger.dev env vars | All three (file reads/writes) |
-| Neon Postgres connection string | Vercel + Railway + Trigger.dev env vars | All three (DB queries) |
-| Sentry DSN | Vercel + Railway env vars | Next.js, Hono (error reporting) |
+| Better Auth JWT secret | Vercel + Fly.io env vars | Next.js (sign), Hono (verify) |
+| OpenAI API key | Fly.io + Trigger.dev env vars | Hono (embed queries), Workers (embed chunks) |
+| Qdrant API key | Fly.io + Trigger.dev env vars | Hono (search), Workers (upsert) |
+| R2 access key + secret | Vercel + Fly.io + Trigger.dev env vars | All three (file reads/writes) |
+| Neon Postgres connection string | Vercel + Fly.io + Trigger.dev env vars | All three (DB queries) |
+| Sentry DSN | Vercel + Fly.io env vars | Next.js, Hono (error reporting) |
 | Resend API key | Trigger.dev env vars | Workers (email sending) |
 
 **Rules:**
@@ -1216,7 +1216,7 @@ codeindexer/
 │   │   │   └── r2.ts           # R2 client
 │   │   └── package.json
 │   │
-│   ├── api/                    # Hono chat/agent server (Railway)
+│   ├── api/                    # Hono chat/agent server (Fly.io)
 │   │   ├── src/
 │   │   │   ├── routes/
 │   │   │   │   ├── chat.ts     # POST /chat (SSE streaming)
@@ -1372,7 +1372,7 @@ export const baseEnv = z.object({
 - [ ] Guard: concurrent index + sync race condition (queue SHA if initial index running)
 
 ### Phase 3: Search + Web IDE (Week 5-6)
-- [ ] Hono API server setup on Railway/Fly/EC2
+- [ ] Hono API server setup on Fly.io
 - [ ] JWT auth: RS256 asymmetric (Next.js signs with private key, Hono verifies with public key)
 - [ ] JWT claims: iss, aud, sub, email, exp
 - [ ] **Rate limiting on Hono from day one** (20 chat/min, 60 search/min per user)
@@ -1412,7 +1412,7 @@ export const baseEnv = z.object({
 | Service | Tier | Monthly cost | First paid upgrade trigger |
 |---------|------|-------------|--------------------------|
 | Vercel | Free tier | $0 | Bandwidth >100GB → Hobby $20/mo |
-| Railway/Fly/EC2 | ~$5/mo | $5 | Fixed |
+| Fly.io | ~$5/mo | $5 | Fixed |
 | Trigger.dev | Free ($5 included) | $0 | >$5 compute → Hobby $30/mo (~200 repos with regular syncs) |
 | Neon Postgres | Free (100 CU-hrs, 500MB) | $0 | Storage >500MB → Launch $19/mo (~100 repos with active chat) |
 | Qdrant Cloud | Free (1GB) | $0 | >1GB → paid cluster $25+/mo (~100-200 repos with content in payload) |
@@ -1446,7 +1446,7 @@ export const baseEnv = z.object({
 
 4. **Rate limiting strategy** — DECIDED: **Per-user token bucket, shipped from Phase 3.**
    Chat: 20 turns/min. Search: 60 req/min. Agent: 5 concurrent. Indexing: 5 concurrent repos.
-   In-memory for v1 (single Railway instance). Move to Redis if scaling beyond one instance.
+   In-memory for v1 (single Fly.io instance). Move to Redis if scaling beyond one instance.
 
 5. **Multi-branch support** — DECIDED: **Default branch only for v1.**
    Multi-branch = separate index per branch, multiplied storage, complex UI.
