@@ -874,7 +874,7 @@ Center panel: Code rendered with syntax highlighting (Monaco or CodeMirror)
 | **OpenTelemetry → Grafana Loki** | Structured logs (JSON, correlated with trace IDs) | 50GB/mo |
 | **OpenTelemetry → Grafana Prometheus** | Metrics (latency histograms, request counts, error rates) | 10K series |
 | **Sentry** | Error tracking + stack traces | 5K events/mo (shared with frontend) |
-| **Better Stack / UptimeRobot** | Uptime monitoring + status page | 50 monitors free |
+| **Better Stack** | Uptime monitoring + public status page + Slack/Discord alerting (downtime, incident triggers) | 50 monitors free |
 
 ### 10.2 What to Instrument
 
@@ -898,12 +898,25 @@ Center panel: Code rendered with syntax highlighting (Monaco or CodeMirror)
 - Custom metrics: indexing duration, files processed, chunks embedded, R2 upload time
 - Alert on: failed runs, runs exceeding 10 minutes, Qdrant upsert failures
 
-### 10.3 Key Dashboards
+### 10.3 Slack Alerting
+
+All alerts route to a `#codeindexer-alerts` Slack channel:
+
+| Source | What triggers alert |
+|--------|-------------------|
+| **Better Stack** | Endpoint down (Vercel, Fly.io, Trigger.dev health checks) |
+| **Sentry** | New unhandled error, error spike (>10x baseline), regression on resolved issue |
+| **Grafana** | p99 latency > 5s, error rate > 5%, Qdrant search failures, Claude API errors |
+| **Trigger.dev** | Failed indexing run, run exceeding 10 min |
+| **PostHog** | (Optional) Feature flag rollout alerts, funnel drop-off anomalies |
+
+### 10.4 Key Dashboards
 
 1. **Search performance**: p50/p95/p99 latency, queries/min, Qdrant hit rate
 2. **Chat performance**: time-to-first-token, tokens/sec, tool calls/turn
 3. **Indexing health**: jobs/day, success rate, avg duration, files/chunks processed
 4. **System health**: API error rates, R2 read latency, Postgres query latency
+5. **Uptime**: Better Stack status page (public-facing)
 
 ---
 
