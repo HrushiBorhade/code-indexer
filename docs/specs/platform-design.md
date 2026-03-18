@@ -856,31 +856,45 @@ Center panel: Code rendered with syntax highlighting (Monaco or CodeMirror)
 
 ### 10.1 Stack
 
-| Layer | Tool | Free tier |
-|-------|------|-----------|
-| **Traces** | OpenTelemetry → Grafana Tempo | 50GB/mo |
-| **Logs** | OpenTelemetry → Grafana Loki | 50GB/mo |
-| **Metrics** | OpenTelemetry → Grafana Prometheus | 10K series |
-| **Errors** | Sentry | 5K events/mo |
-| **Uptime** | Better Stack or UptimeRobot | 50 monitors free |
+**Frontend (Next.js on Vercel):**
+
+| Tool | Purpose | Free tier |
+|------|---------|-----------|
+| **@vercel/otel** | Automatic route tracing, server component spans | Included with Vercel |
+| **Vercel Analytics** | Web Vitals (LCP, FID, CLS), page views, navigation timing | 2.5K events/mo free |
+| **Microsoft Clarity** | Session recordings, heatmaps, dead click detection, rage click detection | Unlimited free |
+| **Sentry** | Error tracking + source maps + performance monitoring | 5K events/mo free |
+
+**API + Workers (Hono on Fly.io, Trigger.dev):**
+
+| Tool | Purpose | Free tier |
+|------|---------|-----------|
+| **OpenTelemetry → Grafana Tempo** | Distributed traces (request → embed → Qdrant → Claude → response) | 50GB/mo |
+| **OpenTelemetry → Grafana Loki** | Structured logs (JSON, correlated with trace IDs) | 50GB/mo |
+| **OpenTelemetry → Grafana Prometheus** | Metrics (latency histograms, request counts, error rates) | 10K series |
+| **Sentry** | Error tracking + stack traces | 5K events/mo (shared with frontend) |
+| **Better Stack / UptimeRobot** | Uptime monitoring + status page | 50 monitors free |
 
 ### 10.2 What to Instrument
 
-**Next.js (Vercel):**
-- `@vercel/otel` for automatic route tracing
-- Sentry for error tracking + source maps
-- Custom spans: webhook processing, R2 reads
+**Next.js (Vercel) — Frontend:**
+- `@vercel/otel` — automatic route + RSC tracing
+- Vercel Analytics — Core Web Vitals, page load performance
+- Microsoft Clarity — session replays for UX debugging (how users interact with web IDE, chat)
+- Sentry — error tracking with source maps, replay integration
+- Custom spans: webhook processing time, R2 file proxy latency
 
-**Hono API (Fly.io):**
-- OpenTelemetry Node.js SDK
-- Custom spans: embed latency, Qdrant search latency, Claude API latency
-- Per-chat-turn metrics: tokens used, tool calls made, total latency
-- Sentry for errors
+**Hono API (Fly.io) — Backend:**
+- OpenTelemetry Node.js SDK (`@opentelemetry/sdk-node`)
+- Custom spans: embed latency, Qdrant search latency, Claude API latency, tool call duration
+- Per-chat-turn metrics: tokens used, tool calls made, total latency, time-to-first-token
+- Request-level traces: correlate frontend request → API → Qdrant → Claude → response
+- Sentry for unhandled errors
 
-**Trigger.dev:**
-- Built-in observability (traces, logs per run)
-- Custom metrics: indexing duration, files processed, chunks embedded
-- Alert on: failed runs, runs exceeding 10 minutes
+**Trigger.dev — Workers:**
+- Built-in observability (traces, logs, duration per run)
+- Custom metrics: indexing duration, files processed, chunks embedded, R2 upload time
+- Alert on: failed runs, runs exceeding 10 minutes, Qdrant upsert failures
 
 ### 10.3 Key Dashboards
 
