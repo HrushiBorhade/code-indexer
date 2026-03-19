@@ -6,5 +6,6 @@ dist/
 *.wasm
 *.tsbuildinfo
 .turbo/
+.claude/
 .code-indexer/
 .superpowers/

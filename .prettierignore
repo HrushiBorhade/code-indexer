@@ -3,4 +3,5 @@ node_modules/
 .next/
 .turbo/
 .claude/
+coverage/
 pnpm-lock.yaml
