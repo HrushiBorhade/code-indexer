@@ -3,6 +3,8 @@
   "extends": "./base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    "allowImportingTsExtensions": true,
+    "noEmit": true
   }
 }
