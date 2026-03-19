@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
@@ -8,7 +9,7 @@ export default function Home() {
       <h1 className="text-4xl font-bold tracking-tight">CodeIndexer</h1>
       <p className="text-muted-foreground">Semantic code search engine</p>
       <Button asChild>
-        <a href="/dashboard">Go to Dashboard</a>
+        <Link href="/dashboard">Go to Dashboard</Link>
       </Button>
     </div>
   );
