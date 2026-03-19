@@ -11,6 +11,7 @@
 Turn CodeIndexer from a local CLI into a cloud platform where users connect GitHub repos, browse code in a web IDE, search semantically, and talk to a coding agent — all from the browser.
 
 **User flow:**
+
 1. Sign in with GitHub (OAuth)
 2. Install GitHub App → select repos to grant access
 3. Platform clones repo, indexes it (background)
@@ -71,30 +72,30 @@ Three services, clean separation of concerns:
 
 ### Why three services?
 
-| Service | Why it exists | Deployment |
-|---------|--------------|------------|
-| **Next.js (Vercel)** | UI rendering, auth, GitHub webhook receiver, dashboard. Serverless — scales to zero, no cost when idle. | Vercel free tier |
-| **Hono API (Fly.io)** | Chat/agent streaming, search API, file serving. Persistent server — no timeouts, direct SSE to client. Required because users stare at streaming responses. | Fly.io (~$5/mo) |
-| **Trigger.dev** | Repo indexing, incremental sync, cleanup. Background jobs — fire and forget, retries, queues. | Trigger.dev Cloud (free tier) |
+| Service               | Why it exists                                                                                                                                               | Deployment                    |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| **Next.js (Vercel)**  | UI rendering, auth, GitHub webhook receiver, dashboard. Serverless — scales to zero, no cost when idle.                                                     | Vercel free tier              |
+| **Hono API (Fly.io)** | Chat/agent streaming, search API, file serving. Persistent server — no timeouts, direct SSE to client. Required because users stare at streaming responses. | Fly.io (~$5/mo)               |
+| **Trigger.dev**       | Repo indexing, incremental sync, cleanup. Background jobs — fire and forget, retries, queues.                                                               | Trigger.dev Cloud (free tier) |
 
 ---
 
 ## 3. Tech Stack
 
-| Layer | Technology | Why |
-|-------|-----------|-----|
-| **Frontend** | Next.js 16 + React 19 + shadcn/ui + Tailwind v4 | Our existing design system (preset auFzGMc). SSR + RSC. Note: Next.js 16 renames `middleware.ts` → `proxy.ts` (nodejs runtime only, no edge). |
-| **Auth** | Better Auth (GitHub OAuth provider) | OSS, stores tokens in our Postgres, progressive scope escalation, Auth.js team joined them. |
-| **GitHub integration** | GitHub App (not just OAuth App) | Push webhooks, installation tokens (1hr, auto-rotated), fine-grained repo permissions. |
-| **Chat/Agent API** | Hono + Vercel AI SDK 5 (stable) + Claude Agent SDK V1 | Hono: 14KB, native TS, built-in `streamSSE()`. AI SDK 5: `useChat` hook + `streamText()` + `@ai-sdk/anthropic` provider. Claude Agent SDK V1: `query()` with async iterable for custom tools + subagents. Note: AI SDK 6 and Agent SDK V2 are in beta — upgrade when stable. |
-| **Background jobs** | Trigger.dev v3 | No timeouts, retries, queues, built-in observability. Deployed separately. |
-| **Database** | Neon Postgres (serverless) | Free tier (100 CU-hrs/mo). Scales to zero. Drizzle ORM. |
-| **Vector DB** | Qdrant Cloud | Already used in CLI. HNSW cosine. Chunk content stored in payload. |
-| **Object storage** | Cloudflare R2 | S3-compatible. Zero egress fees. 10GB free. Repo tarballs + file serving. |
-| **Embeddings** | OpenAI text-embedding-3-small (1536 dims) | Already used in CLI. Batched, cached by chunk hash. **Breaking change**: CLI also supports Voyage (1024-dim). Cloud standardizes on OpenAI only. Existing Voyage-indexed Qdrant collections are incompatible and must be re-indexed. |
-| **LLM** | Claude (Opus/Sonnet via Anthropic API) | Agent SDK gives native tool use, subagents, context management. |
-| **Observability** | OpenTelemetry → Grafana Cloud + Sentry | OTEL for traces/logs/metrics. Sentry for errors. Both have generous free tiers. |
-| **DNS/CDN** | Cloudflare | Already using R2. Free plan for DNS + CDN. |
+| Layer                  | Technology                                            | Why                                                                                                                                                                                                                                                                          |
+| ---------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Frontend**           | Next.js 16 + React 19 + shadcn/ui + Tailwind v4       | Our existing design system (preset auFzGMc). SSR + RSC. Note: Next.js 16 renames `middleware.ts` → `proxy.ts` (nodejs runtime only, no edge).                                                                                                                                |
+| **Auth**               | Better Auth (GitHub OAuth provider)                   | OSS, stores tokens in our Postgres, progressive scope escalation, Auth.js team joined them.                                                                                                                                                                                  |
+| **GitHub integration** | GitHub App (not just OAuth App)                       | Push webhooks, installation tokens (1hr, auto-rotated), fine-grained repo permissions.                                                                                                                                                                                       |
+| **Chat/Agent API**     | Hono + Vercel AI SDK 5 (stable) + Claude Agent SDK V1 | Hono: 14KB, native TS, built-in `streamSSE()`. AI SDK 5: `useChat` hook + `streamText()` + `@ai-sdk/anthropic` provider. Claude Agent SDK V1: `query()` with async iterable for custom tools + subagents. Note: AI SDK 6 and Agent SDK V2 are in beta — upgrade when stable. |
+| **Background jobs**    | Trigger.dev v3                                        | No timeouts, retries, queues, built-in observability. Deployed separately.                                                                                                                                                                                                   |
+| **Database**           | Neon Postgres (serverless)                            | Free tier (100 CU-hrs/mo). Scales to zero. Drizzle ORM.                                                                                                                                                                                                                      |
+| **Vector DB**          | Qdrant Cloud                                          | Already used in CLI. HNSW cosine. Chunk content stored in payload.                                                                                                                                                                                                           |
+| **Object storage**     | Cloudflare R2                                         | S3-compatible. Zero egress fees. 10GB free. Repo tarballs + file serving.                                                                                                                                                                                                    |
+| **Embeddings**         | OpenAI text-embedding-3-small (1536 dims)             | Already used in CLI. Batched, cached by chunk hash. **Breaking change**: CLI also supports Voyage (1024-dim). Cloud standardizes on OpenAI only. Existing Voyage-indexed Qdrant collections are incompatible and must be re-indexed.                                         |
+| **LLM**                | Claude (Opus/Sonnet via Anthropic API)                | Agent SDK gives native tool use, subagents, context management.                                                                                                                                                                                                              |
+| **Observability**      | OpenTelemetry → Grafana Cloud + Sentry                | OTEL for traces/logs/metrics. Sentry for errors. Both have generous free tiers.                                                                                                                                                                                              |
+| **DNS/CDN**            | Cloudflare                                            | Already using R2. Free plan for DNS + CDN.                                                                                                                                                                                                                                   |
 
 ---
 
@@ -103,12 +104,14 @@ Three services, clean separation of concerns:
 ### 4.1 Two-Layer Auth Model
 
 **Layer 1: User Identity (Better Auth + GitHub OAuth)**
+
 - User clicks "Sign in with GitHub"
 - Better Auth handles OAuth flow with `user:email` scope
 - User profile + access token stored in Postgres (encrypted via `encryptOAuthTokens`)
 - Session managed via Better Auth (JWT or database sessions)
 
 **Layer 2: Repo Access (GitHub App)**
+
 - User clicks "Add Repository"
 - Redirected to GitHub App installation page
 - User selects which repos to grant access
@@ -123,14 +126,14 @@ description: Semantic code search and AI-powered code assistant
 
 permissions:
   repository:
-    contents: read        # Clone repos, read files
-    metadata: read        # List repos, basic info
-    pull_requests: write  # Create PRs (coding agent, future)
+    contents: read # Clone repos, read files
+    metadata: read # List repos, basic info
+    pull_requests: write # Create PRs (coding agent, future)
 
 subscribe_to_events:
-  - push                  # Re-index on code changes
-  - installation          # Know when app installed/removed
-  - installation_repositories  # Know when repos added/removed
+  - push # Re-index on code changes
+  - installation # Know when app installed/removed
+  - installation_repositories # Know when repos added/removed
 ```
 
 ### 4.3 Token Lifecycle
@@ -289,6 +292,7 @@ Collection: "code-indexer"
 ```
 
 Search query always includes `repo_id` filter:
+
 ```json
 {
   "vector": [0.023, -0.156, ...],
@@ -308,15 +312,18 @@ Search query always includes `repo_id` filter:
 - Simpler lifecycle: no collection create/delete per repo add/remove
 
 **REQUIRED: Create payload index on `repo_id` during collection setup:**
+
 ```json
 PUT /collections/code-indexer/index
 { "field_name": "repo_id", "field_schema": "keyword" }
 ```
+
 Without this explicit index, payload filtering degrades linearly with collection size. Must be called once during `ensureCollection()`.
 
 ### 6.3 Content in Payload
 
 Chunk content (50-200 lines of code) stored directly in Qdrant payload field `content`.
+
 - Eliminates disk/R2 read at search time
 - Search returns code immediately
 - Typical overhead: 5-10MB per 50K-line repo (500 chunks × 10-20KB each)
@@ -338,11 +345,13 @@ r2-bucket: codeindexer-repos
 ### 7.2 Strategy: Tarball vs Individual Files
 
 **Phase 1: Tarball only**
+
 - On index: `git clone --depth 1` → `tar czf` → upload to R2
 - On file read (web IDE): download tar, extract specific file, return
 - Simple but slow for individual file reads (~200ms for extraction)
 
 **Phase 2 (optimization): Exploded files**
+
 - After cloning, also upload individual files to `repos/{repo_id}/files/{path}`
 - Web IDE reads directly: `GET r2://repos/{repo_id}/files/src/auth.ts`
 - File tree JSON pre-computed and cached for instant tree rendering
@@ -350,11 +359,11 @@ r2-bucket: codeindexer-repos
 
 ### 7.3 Cost Estimate
 
-| Metric | Estimate | Cost |
-|--------|----------|------|
-| 100 repos × 50MB avg | 5 GB storage | Free (10GB free tier) |
-| 10K file reads/day | Class B operations | Free (10M free/mo) |
-| Egress | All reads | $0 (R2 = zero egress) |
+| Metric               | Estimate           | Cost                  |
+| -------------------- | ------------------ | --------------------- |
+| 100 repos × 50MB avg | 5 GB storage       | Free (10GB free tier) |
+| 10K file reads/day   | Class B operations | Free (10M free/mo)    |
+| Egress               | All reads          | $0 (R2 = zero egress) |
 
 ---
 
@@ -363,6 +372,7 @@ r2-bucket: codeindexer-repos
 ### 8.1 Next.js (Vercel)
 
 **Responsibilities:**
+
 - Server-side rendering (dashboard, web IDE shell, settings)
 - Better Auth integration (sign in/out, session management)
 - GitHub App webhook receiver (`POST /api/webhooks/github`)
@@ -391,6 +401,7 @@ r2-bucket: codeindexer-repos
 ### 8.2 Hono API (Fly.io)
 
 **Responsibilities:**
+
 - Chat streaming (direct SSE to client)
 - Search API (embed query → Qdrant → return results with code)
 - Coding agent execution (multi-step tool use → stream progress)
@@ -409,21 +420,27 @@ GET  /health                → Health check
 ```
 
 **Stack:**
+
 ```typescript
 // Hono server with Vercel AI SDK + Claude Agent SDK
 
-import { Hono } from 'hono'
-import { streamSSE } from 'hono/streaming'
-import { cors } from 'hono/cors'
+import { Hono } from 'hono';
+import { streamSSE } from 'hono/streaming';
+import { cors } from 'hono/cors';
 
-const app = new Hono()
+const app = new Hono();
 
 // CORS: FRONTEND_URL must be exact production domain (e.g. https://codeindexer.dev), NEVER '*'
-app.use('/*', cors({ origin: process.env.FRONTEND_URL }))
+app.use('/*', cors({ origin: process.env.FRONTEND_URL }));
 
 // Rate limiting: per-user token bucket (10 chat turns/min, 30 searches/min)
 // Shipped from Phase 3 — not deferred to polish phase
-app.use('/*', rateLimiter({ /* ... */ }))
+app.use(
+  '/*',
+  rateLimiter({
+    /* ... */
+  }),
+);
 
 app.post('/chat', async (c) => {
   // 1. Validate session (JWT from Better Auth)
@@ -436,8 +453,8 @@ app.post('/chat', async (c) => {
   // 8. Save assistant message to Postgres (enforce max content length: 100KB)
   return streamSSE(c, async (stream) => {
     // ... streaming logic
-  })
-})
+  });
+});
 ```
 
 **Agent tools available to Claude:**
@@ -445,18 +462,19 @@ app.post('/chat', async (c) => {
 ```typescript
 const tools = {
   search_code: {
-    description: "Search the codebase semantically",
+    description: 'Search the codebase semantically',
     parameters: { query: z.string() },
     execute: async ({ query }) => {
       // Embed → Qdrant → return top-K chunks with code
-    }
+    },
   },
   read_file: {
-    description: "Read a file from the repository",
+    description: 'Read a file from the repository',
     parameters: {
-      path: z.string()
-        .transform(sanitizePath)                          // Strip ../ and . segments
-        .refine(p => !p.includes('..'), 'Path traversal') // Double-check after transform
+      path: z
+        .string()
+        .transform(sanitizePath) // Strip ../ and . segments
+        .refine((p) => !p.includes('..'), 'Path traversal'), // Double-check after transform
     },
     execute: async ({ path }) => {
       // SECURITY: path is sanitized by Zod transform above.
@@ -464,20 +482,21 @@ const tools = {
       // This prevents prompt injection attacks where malicious code comments
       // trick the LLM into requesting paths outside the repo scope.
       // Read from R2: repos/{repoId}/files/{path}
-    }
+    },
   },
   list_files: {
-    description: "List files in a directory",
+    description: 'List files in a directory',
     parameters: { directory: z.string() },
     execute: async ({ directory }) => {
       // Read file-tree.json from R2, filter by directory
-    }
+    },
   },
   // Future: edit_file, create_pr, run_command
-}
+};
 ```
 
 **Auth between Next.js and Hono:**
+
 - Better Auth generates JWT session tokens
 - Frontend sends `Authorization: Bearer <token>` to Hono
 - Hono verifies JWT signature (shared secret or public key)
@@ -485,17 +504,20 @@ const tools = {
 
 **Repo ownership check (CRITICAL — every endpoint):**
 Every Hono endpoint that accepts a `repoId` must verify ownership before executing:
+
 ```typescript
 const repo = await db.query.repos.findFirst({
-  where: and(eq(repos.id, repoId), eq(repos.userId, session.userId))
-})
-if (!repo) return c.json({ error: 'Not found' }, 404)
+  where: and(eq(repos.id, repoId), eq(repos.userId, session.userId)),
+});
+if (!repo) return c.json({ error: 'Not found' }, 404);
 ```
+
 This prevents cross-tenant data access even if a `repo_id` UUID is guessed.
 
 ### 8.3 Trigger.dev (Background Workers)
 
 **Responsibilities:**
+
 - Initial repo indexing (clone → walk → chunk → embed → store)
 - Incremental re-indexing on push (pull → Merkle diff → re-embed changed)
 - Repo cleanup on disconnect (delete from R2, Qdrant, Postgres)
@@ -505,9 +527,9 @@ This prevents cross-tenant data access even if a `repo_id` UUID is guessed.
 ```typescript
 // trigger/index-repo.ts
 export const indexRepo = task({
-  id: "index-repo",
+  id: 'index-repo',
   retry: { maxAttempts: 3 },
-  machine: { preset: "medium-1x" },  // 1 vCPU, 1GB RAM
+  machine: { preset: 'medium-1x' }, // 1 vCPU, 1GB RAM
 
   run: async ({ repoId }: { repoId: string }) => {
     // 1. Load repo metadata from Postgres
@@ -521,12 +543,12 @@ export const indexRepo = task({
     // 9. tar.gz → upload to R2
     // 10. Compute + upload file-tree.json to R2
     // 11. Update repo status in Postgres: "ready"
-  }
-})
+  },
+});
 
 // trigger/sync-repo.ts
 export const syncRepo = task({
-  id: "sync-repo",
+  id: 'sync-repo',
   retry: { maxAttempts: 3 },
 
   run: async ({ repoId, commitSha }: { repoId: string; commitSha: string }) => {
@@ -546,26 +568,26 @@ export const syncRepo = task({
     // 11. Update repo status: "ready", last_commit_sha
     //
     // Idempotency: skip if index_jobs already has a completed job for this commit_sha.
-  }
-})
+  },
+});
 
 // trigger/cleanup-repo.ts
 export const cleanupRepo = task({
-  id: "cleanup-repo",
+  id: 'cleanup-repo',
 
   run: async ({ repoId }: { repoId: string }) => {
     // 1. Delete all points from Qdrant where repo_id = repoId
     // 2. Delete R2 objects: repos/{repoId}/*
     // 3. Delete from Postgres: file_hashes, chunk_cache, dir_hashes, index_jobs
     // 4. Delete repo record
-  }
-})
+  },
+});
 
 // ─── EMAIL & LIFECYCLE TASKS ───
 
 // trigger/emails/welcome.ts
 export const sendWelcomeEmail = task({
-  id: "send-welcome-email",
+  id: 'send-welcome-email',
   retry: { maxAttempts: 3 },
 
   run: async ({ userId }: { userId: string }) => {
@@ -574,52 +596,52 @@ export const sendWelcomeEmail = task({
     //    - Template: React Email component
     //    - Content: "Welcome to CodeIndexer. Connect your first repo →"
     // 3. Schedule drip emails: day 1, 3, 7
-  }
-})
+  },
+});
 
 // trigger/emails/drip.ts
 export const sendDripEmail = task({
-  id: "send-drip-email",
+  id: 'send-drip-email',
 
   run: async ({ userId, day }: { userId: string; day: 1 | 3 | 7 }) => {
     // Day 1: "Have you tried searching your codebase?"
     // Day 3: "Your coding agent can explain any function"
     // Day 7: "Connect more repos to get the full picture"
     // Skip if user already performed the action (check Postgres)
-  }
-})
+  },
+});
 
 // trigger/emails/weekly-digest.ts
 export const sendWeeklyDigest = task({
-  id: "send-weekly-digest",
+  id: 'send-weekly-digest',
 
   run: async ({ userId }: { userId: string }) => {
     // 1. Aggregate usage from past week:
     //    - Repos indexed, searches made, chat turns, agent actions
     // 2. Send digest email via Resend
     // 3. Skip if user had zero activity (don't spam inactive users)
-  }
-})
+  },
+});
 
 // ─── SCHEDULED CRON TASKS ───
 
 // trigger/crons/stale-repo-check.ts
 export const checkStaleRepos = schedules.task({
-  id: "check-stale-repos",
-  cron: "0 0 * * 0",  // Every Sunday midnight
+  id: 'check-stale-repos',
+  cron: '0 0 * * 0', // Every Sunday midnight
 
   run: async () => {
     // 1. Find repos where last_indexed_at < 90 days ago
     // 2. Mark status = "stale"
     // 3. Send email: "Your repo X hasn't been updated in 90 days. Archive it?"
     // 4. If stale for 180 days and no user action → auto-archive (free up Qdrant/R2)
-  }
-})
+  },
+});
 
 // trigger/crons/index-health.ts
 export const verifyIndexHealth = schedules.task({
-  id: "verify-index-health",
-  cron: "0 6 * * *",  // Every day at 6am
+  id: 'verify-index-health',
+  cron: '0 6 * * *', // Every day at 6am
 
   run: async () => {
     // 1. For each "ready" repo:
@@ -629,43 +651,43 @@ export const verifyIndexHealth = schedules.task({
     // 2. Check for orphaned R2 objects (repo deleted but files remain)
     // 3. Check for orphaned Qdrant points (repo deleted but vectors remain)
     // 4. Alert via Sentry/Grafana if issues found
-  }
-})
+  },
+});
 
 // trigger/crons/weekly-digests.ts
 export const triggerWeeklyDigests = schedules.task({
-  id: "trigger-weekly-digests",
-  cron: "0 9 * * 1",  // Every Monday at 9am
+  id: 'trigger-weekly-digests',
+  cron: '0 9 * * 1', // Every Monday at 9am
 
   run: async () => {
     // 1. Load all active users (logged in within last 30 days)
     // 2. Batch trigger sendWeeklyDigest for each user
-  }
-})
+  },
+});
 
 // trigger/crons/usage-aggregation.ts
 export const aggregateUsage = schedules.task({
-  id: "aggregate-usage",
-  cron: "0 0 * * *",  // Every midnight
+  id: 'aggregate-usage',
+  cron: '0 0 * * *', // Every midnight
 
   run: async () => {
     // 1. Count per-user: chat turns, search queries, chunks indexed today
     // 2. Write to usage_daily table (for billing, analytics, rate limit decisions)
     // 3. Check if any user exceeded soft limits → flag for notification
-  }
-})
+  },
+});
 
 // trigger/webhooks/replay-failed.ts
 export const replayFailedWebhooks = schedules.task({
-  id: "replay-failed-webhooks",
-  cron: "*/30 * * * *",  // Every 30 minutes
+  id: 'replay-failed-webhooks',
+  cron: '*/30 * * * *', // Every 30 minutes
 
   run: async () => {
     // 1. Find index_jobs with status = "failed" and created_at < 30 min ago
     // 2. Retry up to 3 times
     // 3. After 3 failures → alert, mark as permanently_failed
-  }
-})
+  },
+});
 ```
 
 ### 8.3.2 Email Infrastructure
@@ -673,12 +695,14 @@ export const replayFailedWebhooks = schedules.task({
 **Provider: Resend** ($0 for 100 emails/day, 3000/month on free tier)
 
 Why Resend:
+
 - React Email for templates (same JSX you already write)
 - First-class Trigger.dev integration
 - Generous free tier for early stage
 - Simple API: `resend.emails.send({ to, subject, react: <WelcomeEmail /> })`
 
 **Email templates (React Email):**
+
 ```
 packages/email/
   ├── src/
@@ -695,18 +719,18 @@ packages/email/
 
 ### 8.3.3 Complete Trigger.dev Task Registry
 
-| Task | Trigger | When |
-|------|---------|------|
-| `index-repo` | Manual / webhook | User adds repo or initial install |
-| `sync-repo` | GitHub push webhook | Code pushed to repo |
-| `cleanup-repo` | Manual | User disconnects repo |
-| `send-welcome-email` | User signup event | Immediately after signup |
-| `send-drip-email` | Scheduled by welcome task | Day 1, 3, 7 after signup |
-| `send-weekly-digest` | Cron (Monday 9am) | Weekly for active users |
-| `check-stale-repos` | Cron (Sunday midnight) | Weekly |
-| `verify-index-health` | Cron (daily 6am) | Daily |
-| `aggregate-usage` | Cron (daily midnight) | Daily |
-| `replay-failed-webhooks` | Cron (every 30min) | Continuous |
+| Task                     | Trigger                   | When                              |
+| ------------------------ | ------------------------- | --------------------------------- |
+| `index-repo`             | Manual / webhook          | User adds repo or initial install |
+| `sync-repo`              | GitHub push webhook       | Code pushed to repo               |
+| `cleanup-repo`           | Manual                    | User disconnects repo             |
+| `send-welcome-email`     | User signup event         | Immediately after signup          |
+| `send-drip-email`        | Scheduled by welcome task | Day 1, 3, 7 after signup          |
+| `send-weekly-digest`     | Cron (Monday 9am)         | Weekly for active users           |
+| `check-stale-repos`      | Cron (Sunday midnight)    | Weekly                            |
+| `verify-index-health`    | Cron (daily 6am)          | Daily                             |
+| `aggregate-usage`        | Cron (daily midnight)     | Daily                             |
+| `replay-failed-webhooks` | Cron (every 30min)        | Continuous                        |
 
 ---
 
@@ -858,27 +882,28 @@ Center panel: Code rendered with syntax highlighting (Monaco or CodeMirror)
 
 **Frontend (Next.js on Vercel):**
 
-| Tool | Purpose | Free tier |
-|------|---------|-----------|
-| **@vercel/otel** | Automatic route tracing, server component spans | Included with Vercel |
-| **Vercel Analytics** | Web Vitals (LCP, FID, CLS), page views, navigation timing | 2.5K events/mo free |
-| **PostHog** | Product analytics, feature flags, A/B testing, funnels, user paths | 1M events/mo free |
-| **Microsoft Clarity** | Session recordings, heatmaps, dead click detection, rage click detection | Unlimited free |
-| **Sentry** | Error tracking + source maps + performance monitoring | 5K events/mo free |
+| Tool                  | Purpose                                                                  | Free tier            |
+| --------------------- | ------------------------------------------------------------------------ | -------------------- |
+| **@vercel/otel**      | Automatic route tracing, server component spans                          | Included with Vercel |
+| **Vercel Analytics**  | Web Vitals (LCP, FID, CLS), page views, navigation timing                | 2.5K events/mo free  |
+| **PostHog**           | Product analytics, feature flags, A/B testing, funnels, user paths       | 1M events/mo free    |
+| **Microsoft Clarity** | Session recordings, heatmaps, dead click detection, rage click detection | Unlimited free       |
+| **Sentry**            | Error tracking + source maps + performance monitoring                    | 5K events/mo free    |
 
 **API + Workers (Hono on Fly.io, Trigger.dev):**
 
-| Tool | Purpose | Free tier |
-|------|---------|-----------|
-| **OpenTelemetry → Grafana Tempo** | Distributed traces (request → embed → Qdrant → Claude → response) | 50GB/mo |
-| **OpenTelemetry → Grafana Loki** | Structured logs (JSON, correlated with trace IDs) | 50GB/mo |
-| **OpenTelemetry → Grafana Prometheus** | Metrics (latency histograms, request counts, error rates) | 10K series |
-| **Sentry** | Error tracking + stack traces | 5K events/mo (shared with frontend) |
-| **Better Stack** | Uptime monitoring + public status page + Slack/Discord alerting (downtime, incident triggers) | 50 monitors free |
+| Tool                                   | Purpose                                                                                       | Free tier                           |
+| -------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------- |
+| **OpenTelemetry → Grafana Tempo**      | Distributed traces (request → embed → Qdrant → Claude → response)                             | 50GB/mo                             |
+| **OpenTelemetry → Grafana Loki**       | Structured logs (JSON, correlated with trace IDs)                                             | 50GB/mo                             |
+| **OpenTelemetry → Grafana Prometheus** | Metrics (latency histograms, request counts, error rates)                                     | 10K series                          |
+| **Sentry**                             | Error tracking + stack traces                                                                 | 5K events/mo (shared with frontend) |
+| **Better Stack**                       | Uptime monitoring + public status page + Slack/Discord alerting (downtime, incident triggers) | 50 monitors free                    |
 
 ### 10.2 What to Instrument
 
 **Next.js (Vercel) — Frontend:**
+
 - `@vercel/otel` — automatic route + RSC tracing
 - Vercel Analytics — Core Web Vitals, page load performance
 - PostHog — product analytics, feature flags, A/B testing, funnels, user paths
@@ -887,6 +912,7 @@ Center panel: Code rendered with syntax highlighting (Monaco or CodeMirror)
 - Custom spans: webhook processing time, R2 file proxy latency
 
 **Hono API (Fly.io) — Backend:**
+
 - OpenTelemetry Node.js SDK (`@opentelemetry/sdk-node`)
 - Custom spans: embed latency, Qdrant search latency, Claude API latency, tool call duration
 - Per-chat-turn metrics: tokens used, tool calls made, total latency, time-to-first-token
@@ -894,6 +920,7 @@ Center panel: Code rendered with syntax highlighting (Monaco or CodeMirror)
 - Sentry for unhandled errors
 
 **Trigger.dev — Workers:**
+
 - Built-in observability (traces, logs, duration per run)
 - Custom metrics: indexing duration, files processed, chunks embedded, R2 upload time
 - Alert on: failed runs, runs exceeding 10 minutes, Qdrant upsert failures
@@ -902,13 +929,13 @@ Center panel: Code rendered with syntax highlighting (Monaco or CodeMirror)
 
 All alerts route to a `#codeindexer-alerts` Slack channel:
 
-| Source | What triggers alert |
-|--------|-------------------|
-| **Better Stack** | Endpoint down (Vercel, Fly.io, Trigger.dev health checks) |
-| **Sentry** | New unhandled error, error spike (>10x baseline), regression on resolved issue |
-| **Grafana** | p99 latency > 5s, error rate > 5%, Qdrant search failures, Claude API errors |
-| **Trigger.dev** | Failed indexing run, run exceeding 10 min |
-| **PostHog** | (Optional) Feature flag rollout alerts, funnel drop-off anomalies |
+| Source           | What triggers alert                                                            |
+| ---------------- | ------------------------------------------------------------------------------ |
+| **Better Stack** | Endpoint down (Vercel, Fly.io, Trigger.dev health checks)                      |
+| **Sentry**       | New unhandled error, error spike (>10x baseline), regression on resolved issue |
+| **Grafana**      | p99 latency > 5s, error rate > 5%, Qdrant search failures, Claude API errors   |
+| **Trigger.dev**  | Failed indexing run, run exceeding 10 min                                      |
+| **PostHog**      | (Optional) Feature flag rollout alerts, funnel drop-off anomalies              |
 
 ### 10.4 Key Dashboards
 
@@ -927,15 +954,18 @@ All alerts route to a `#codeindexer-alerts` Slack channel:
 There are three distinct security boundaries in the system:
 
 **Boundary 1: Who is this user? (Authentication)**
+
 - Next.js: Better Auth cookie-based sessions (same-origin, httpOnly, secure)
 - Hono: JWT Bearer tokens issued by Better Auth (cross-origin)
 - Trigger.dev: Server-side only, no user context needed (API key auth)
 
 **Boundary 2: Can this user access this repo? (Authorization)**
+
 - Every request that touches repo data must verify ownership
 - This is enforced via middleware, not per-route manual checks
 
 **Boundary 3: Can this user perform this action? (Rate limiting)**
+
 - Per-user rate limits on expensive operations (chat, search, indexing)
 
 ### 11.2 Middleware Enforcement (Hono)
@@ -944,97 +974,97 @@ Security is enforced via Hono middleware — not by trusting each route handler 
 
 ```typescript
 // apps/api/src/middleware/auth.ts
-import { createMiddleware } from 'hono/factory'
-import { verify } from 'hono/jwt'
+import { createMiddleware } from 'hono/factory';
+import { verify } from 'hono/jwt';
 
 // Middleware 1: Authenticate — extract and verify JWT, attach user to context
 export const authenticate = createMiddleware(async (c, next) => {
-  const header = c.req.header('Authorization')
+  const header = c.req.header('Authorization');
   if (!header?.startsWith('Bearer ')) {
-    return c.json({ error: 'Missing authorization' }, 401)
+    return c.json({ error: 'Missing authorization' }, 401);
   }
 
-  const token = header.slice(7)
+  const token = header.slice(7);
   try {
-    const payload = await verify(token, process.env.JWT_SECRET!)
-    c.set('userId', payload.sub as string)
-    c.set('userEmail', payload.email as string)
+    const payload = await verify(token, process.env.JWT_SECRET!);
+    c.set('userId', payload.sub as string);
+    c.set('userEmail', payload.email as string);
   } catch {
-    return c.json({ error: 'Invalid or expired token' }, 401)
+    return c.json({ error: 'Invalid or expired token' }, 401);
   }
 
-  await next()
-})
+  await next();
+});
 
 // Middleware 2: Authorize repo — verify user owns the repo in the request
 // NOTE: Only reads repoId from URL param, NEVER from body (body can only be consumed once in Hono)
 export const authorizeRepo = createMiddleware(async (c, next) => {
-  const repoId = c.req.param('repoId')
-  const userId = c.get('userId')
+  const repoId = c.req.param('repoId');
+  const userId = c.get('userId');
 
   if (!repoId) {
-    return c.json({ error: 'Missing repoId' }, 400)
+    return c.json({ error: 'Missing repoId' }, 400);
   }
 
   const repo = await db.query.repos.findFirst({
-    where: and(eq(repos.id, repoId), eq(repos.userId, userId))
-  })
+    where: and(eq(repos.id, repoId), eq(repos.userId, userId)),
+  });
 
   if (!repo) {
     // Return 404 not 403 — don't reveal that the repo exists for another user
-    return c.json({ error: 'Repository not found' }, 404)
+    return c.json({ error: 'Repository not found' }, 404);
   }
 
-  c.set('repo', repo)
-  await next()
-})
+  c.set('repo', repo);
+  await next();
+});
 
 // Middleware 3: Rate limit — per-user token bucket
 export const rateLimit = (limit: number, windowMs: number) =>
   createMiddleware(async (c, next) => {
-    const userId = c.get('userId')
-    const key = `rate:${userId}:${c.req.path}`
+    const userId = c.get('userId');
+    const key = `rate:${userId}:${c.req.path}`;
 
     // In-memory for v1, move to Redis if scaling beyond single instance
-    const now = Date.now()
-    const window = rateBuckets.get(key) || { count: 0, start: now }
+    const now = Date.now();
+    const window = rateBuckets.get(key) || { count: 0, start: now };
 
     if (now - window.start > windowMs) {
-      window.count = 0
-      window.start = now
+      window.count = 0;
+      window.start = now;
     }
 
     if (window.count >= limit) {
-      return c.json({ error: 'Rate limit exceeded' }, 429)
+      return c.json({ error: 'Rate limit exceeded' }, 429);
     }
 
-    window.count++
-    rateBuckets.set(key, window)
-    await next()
-  })
+    window.count++;
+    rateBuckets.set(key, window);
+    await next();
+  });
 ```
 
 **Applied to routes:**
 
 ```typescript
 // apps/api/src/index.ts
-const app = new Hono()
+const app = new Hono();
 
 // Global middleware
-app.use('/*', cors({ origin: process.env.FRONTEND_URL }))
+app.use('/*', cors({ origin: process.env.FRONTEND_URL }));
 
 // All routes except /health require authentication
-app.use('/chat/*', authenticate, authorizeRepo, rateLimit(20, 60_000))
-app.use('/search/*', authenticate, authorizeRepo, rateLimit(60, 60_000))
-app.use('/agent/*', authenticate, authorizeRepo, rateLimit(5, 60_000))
-app.use('/conversations/*', authenticate)
+app.use('/chat/*', authenticate, authorizeRepo, rateLimit(20, 60_000));
+app.use('/search/*', authenticate, authorizeRepo, rateLimit(60, 60_000));
+app.use('/agent/*', authenticate, authorizeRepo, rateLimit(5, 60_000));
+app.use('/conversations/*', authenticate);
 
 // Routes
-app.post('/chat/:repoId', chatHandler)       // userId + repo already verified
-app.post('/search/:repoId', searchHandler)    // userId + repo already verified
-app.post('/agent/:repoId', agentHandler)      // userId + repo already verified
-app.get('/conversations', listConversations)  // userId verified, queries by userId
-app.get('/health', (c) => c.json({ ok: true }))
+app.post('/chat/:repoId', chatHandler); // userId + repo already verified
+app.post('/search/:repoId', searchHandler); // userId + repo already verified
+app.post('/agent/:repoId', agentHandler); // userId + repo already verified
+app.get('/conversations', listConversations); // userId verified, queries by userId
+app.get('/health', (c) => c.json({ ok: true }));
 ```
 
 **Key principle: By the time a route handler executes, auth + authz are already done.** The handler can trust `c.get('userId')` and `c.get('repo')` — no manual checks needed.
@@ -1044,50 +1074,50 @@ app.get('/health', (c) => c.json({ ok: true }))
 ```typescript
 // apps/web/proxy.ts (Next.js 16 renamed middleware.ts → proxy.ts)
 // Runtime is exclusively 'nodejs' (not edge) in Next.js 16+
-import { NextRequest, NextResponse } from 'next/server'
-import { decrypt } from '@/lib/session'
-import { cookies } from 'next/headers'
+import { NextRequest, NextResponse } from 'next/server';
+import { decrypt } from '@/lib/session';
+import { cookies } from 'next/headers';
 
-const protectedRoutes = ['/dashboard', '/repo']
-const publicRoutes = ['/login', '/', '/api/webhooks/github']
+const protectedRoutes = ['/dashboard', '/repo'];
+const publicRoutes = ['/login', '/', '/api/webhooks/github'];
 
 export default async function proxy(req: NextRequest) {
-  const path = req.nextUrl.pathname
-  const isProtectedRoute = protectedRoutes.some(r => path.startsWith(r))
-  const isPublicRoute = publicRoutes.some(r => path.startsWith(r))
+  const path = req.nextUrl.pathname;
+  const isProtectedRoute = protectedRoutes.some((r) => path.startsWith(r));
+  const isPublicRoute = publicRoutes.some((r) => path.startsWith(r));
 
-  const cookie = (await cookies()).get('session')?.value
-  const session = await decrypt(cookie)
+  const cookie = (await cookies()).get('session')?.value;
+  const session = await decrypt(cookie);
 
   if (isProtectedRoute && !session?.userId) {
-    return NextResponse.redirect(new URL('/login', req.nextUrl))
+    return NextResponse.redirect(new URL('/login', req.nextUrl));
   }
 
   if (isPublicRoute && session?.userId && !path.startsWith('/dashboard')) {
-    return NextResponse.redirect(new URL('/dashboard', req.nextUrl))
+    return NextResponse.redirect(new URL('/dashboard', req.nextUrl));
   }
 
-  return NextResponse.next()
+  return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|.*\\.png$).*)']
-}
+  matcher: ['/((?!api|_next/static|_next/image|.*\\.png$).*)'],
+};
 
 // For API routes that touch repo data:
 // apps/web/app/api/files/[repoId]/[...path]/route.ts
 export async function GET(req, { params }) {
-  const session = await auth()
-  if (!session) return new Response('Unauthorized', { status: 401 })
+  const session = await auth();
+  if (!session) return new Response('Unauthorized', { status: 401 });
 
   const repo = await db.query.repos.findFirst({
-    where: and(eq(repos.id, params.repoId), eq(repos.userId, session.user.id))
-  })
-  if (!repo) return new Response('Not found', { status: 404 })
+    where: and(eq(repos.id, params.repoId), eq(repos.userId, session.user.id)),
+  });
+  if (!repo) return new Response('Not found', { status: 404 });
 
   // Safe: user owns this repo
-  const file = await r2.get(`repos/${repo.id}/files/${params.path.join('/')}`)
-  return new Response(file.body)
+  const file = await r2.get(`repos/${repo.id}/files/${params.path.join('/')}`);
+  return new Response(file.body);
 }
 ```
 
@@ -1095,13 +1125,14 @@ export async function GET(req, { params }) {
 
 Three layers ensure no cross-tenant data access:
 
-| Layer | Enforcement | What it prevents |
-|-------|------------|-----------------|
-| **1. Middleware** | JWT auth + repo ownership check | Unauthenticated access, accessing other users' repos |
-| **2. Query scoping** | Every Postgres query includes `user_id` or `repo_id` WHERE clause. Every Qdrant query includes `repo_id` filter. Every R2 key prefixed with `repo_id`. | SQL injection or query bugs leaking data |
-| **3. Postgres RLS (optional, Phase 5)** | `ALTER TABLE repos ENABLE ROW LEVEL SECURITY; CREATE POLICY ... USING (user_id = current_setting('app.user_id'))` | Defense against bugs in query scoping — DB enforces isolation even if app code is wrong |
+| Layer                                   | Enforcement                                                                                                                                            | What it prevents                                                                        |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| **1. Middleware**                       | JWT auth + repo ownership check                                                                                                                        | Unauthenticated access, accessing other users' repos                                    |
+| **2. Query scoping**                    | Every Postgres query includes `user_id` or `repo_id` WHERE clause. Every Qdrant query includes `repo_id` filter. Every R2 key prefixed with `repo_id`. | SQL injection or query bugs leaking data                                                |
+| **3. Postgres RLS (optional, Phase 5)** | `ALTER TABLE repos ENABLE ROW LEVEL SECURITY; CREATE POLICY ... USING (user_id = current_setting('app.user_id'))`                                      | Defense against bugs in query scoping — DB enforces isolation even if app code is wrong |
 
 **R2 access control:**
+
 - R2 bucket is private (no public access)
 - Only Next.js and Hono servers have S3 access keys
 - R2 keys structured as `repos/{repoId}/...` — the `repoId` in the key matches the authorized `repoId` from middleware
@@ -1112,26 +1143,27 @@ Three layers ensure no cross-tenant data access:
 function sanitizePath(userPath: string): string {
   return userPath
     .split('/')
-    .filter(segment => segment !== '..' && segment !== '.' && segment !== '')
-    .join('/')
+    .filter((segment) => segment !== '..' && segment !== '.' && segment !== '')
+    .join('/');
 }
 ```
 
 ### 11.5 Secrets Management
 
-| Secret | Stored in | Accessed by |
-|--------|----------|-------------|
-| GitHub App private key (.pem) | Vercel env vars (encrypted) | Next.js (webhook handler, token generation) |
-| GitHub App webhook secret | Vercel env vars | Next.js (webhook verification) |
-| Better Auth JWT secret | Vercel + Fly.io env vars | Next.js (sign), Hono (verify) |
-| OpenAI API key | Fly.io + Trigger.dev env vars | Hono (embed queries), Workers (embed chunks) |
-| Qdrant API key | Fly.io + Trigger.dev env vars | Hono (search), Workers (upsert) |
-| R2 access key + secret | Vercel + Fly.io + Trigger.dev env vars | All three (file reads/writes) |
-| Neon Postgres connection string | Vercel + Fly.io + Trigger.dev env vars | All three (DB queries) |
-| Sentry DSN | Vercel + Fly.io env vars | Next.js, Hono (error reporting) |
-| Resend API key | Trigger.dev env vars | Workers (email sending) |
+| Secret                          | Stored in                              | Accessed by                                  |
+| ------------------------------- | -------------------------------------- | -------------------------------------------- |
+| GitHub App private key (.pem)   | Vercel env vars (encrypted)            | Next.js (webhook handler, token generation)  |
+| GitHub App webhook secret       | Vercel env vars                        | Next.js (webhook verification)               |
+| Better Auth JWT secret          | Vercel + Fly.io env vars               | Next.js (sign), Hono (verify)                |
+| OpenAI API key                  | Fly.io + Trigger.dev env vars          | Hono (embed queries), Workers (embed chunks) |
+| Qdrant API key                  | Fly.io + Trigger.dev env vars          | Hono (search), Workers (upsert)              |
+| R2 access key + secret          | Vercel + Fly.io + Trigger.dev env vars | All three (file reads/writes)                |
+| Neon Postgres connection string | Vercel + Fly.io + Trigger.dev env vars | All three (DB queries)                       |
+| Sentry DSN                      | Vercel + Fly.io env vars               | Next.js, Hono (error reporting)              |
+| Resend API key                  | Trigger.dev env vars                   | Workers (email sending)                      |
 
 **Rules:**
+
 - No secrets in code, Git, R2, or Postgres
 - All secrets encrypted at rest in their respective platforms
 - Rotate GitHub App private key annually
@@ -1142,26 +1174,26 @@ function sanitizePath(userPath: string): string {
 
 ```typescript
 // /api/webhooks/github — MUST verify before processing
-import { createHmac, timingSafeEqual } from 'crypto'
+import { createHmac, timingSafeEqual } from 'crypto';
 
 function verifyGitHubWebhook(body: string, signature: string, secret: string): boolean {
-  const expected = 'sha256=' + createHmac('sha256', secret).update(body).digest('hex')
+  const expected = 'sha256=' + createHmac('sha256', secret).update(body).digest('hex');
   // timingSafeEqual prevents timing attacks
-  return timingSafeEqual(Buffer.from(signature), Buffer.from(expected))
+  return timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 }
 
 // In the route handler:
 export async function POST(req: Request) {
-  const body = await req.text()
-  const signature = req.headers.get('X-Hub-Signature-256')
+  const body = await req.text();
+  const signature = req.headers.get('X-Hub-Signature-256');
 
   if (!signature || !verifyGitHubWebhook(body, signature, WEBHOOK_SECRET)) {
-    return new Response('Invalid signature', { status: 401 })
+    return new Response('Invalid signature', { status: 401 });
   }
 
   // Safe: webhook is genuine from GitHub
-  const event = req.headers.get('X-GitHub-Event')
-  const payload = JSON.parse(body)
+  const event = req.headers.get('X-GitHub-Event');
+  const payload = JSON.parse(body);
   // ... process webhook
 }
 ```
@@ -1173,23 +1205,23 @@ All user inputs validated with Zod before processing:
 ```typescript
 // Hono route input validation
 const chatSchema = z.object({
-  message: z.string().min(1).max(10_000),       // Max 10K chars per message
-  repoId: z.string().uuid(),                     // Must be valid UUID
-  conversationId: z.string().uuid().optional(),   // Optional, must be UUID if present
-})
+  message: z.string().min(1).max(10_000), // Max 10K chars per message
+  repoId: z.string().uuid(), // Must be valid UUID
+  conversationId: z.string().uuid().optional(), // Optional, must be UUID if present
+});
 
 const searchSchema = z.object({
-  query: z.string().min(1).max(1_000),            // Max 1K chars
+  query: z.string().min(1).max(1_000), // Max 1K chars
   repoId: z.string().uuid(),
   limit: z.number().int().min(1).max(50).default(10),
-})
+});
 
 // In route handler:
 app.post('/search/:repoId', async (c) => {
-  const body = searchSchema.safeParse(await c.req.json())
-  if (!body.success) return c.json({ error: body.error.flatten() }, 400)
+  const body = searchSchema.safeParse(await c.req.json());
+  if (!body.success) return c.json({ error: body.error.flatten() }, 400);
   // ... proceed with validated data
-})
+});
 ```
 
 ### 11.8 Auth Between Services
@@ -1205,6 +1237,7 @@ Workers → Resend:   API key (server-side only)
 ```
 
 **JWT token flow (Better Auth → Hono):**
+
 ```
 1. User logs in via Better Auth → session created in Postgres
 2. Frontend calls Next.js API: GET /api/auth/token
@@ -1344,18 +1377,18 @@ codeindexer/
 
 The existing CLI code in `src/` becomes `packages/core/`. Changes needed:
 
-| Current (CLI) | Cloud (packages/core) | Change | Effort |
-|---|---|---|---|
-| `db.ts` uses better-sqlite3 (sync API) | Replaced by `packages/db` (Drizzle + Neon, async API) | **Delete `db.ts` entirely.** All query functions move to `packages/db`. Every caller must switch from sync to async. | High |
-| `sync.ts` uses `db.transaction(() => {})()` (sync) | `sync.ts` uses `db.transaction(async (tx) => {})` (async Drizzle) | **Significant refactor.** Extract pure Merkle logic (`buildMerkleTree`, `computeChanges` diffing) into pure functions. Create `SyncStorage` interface for DB I/O. Implement with Drizzle. All transaction code rewritten to async. | High |
-| `store.ts` — no content in payload, no repo_id filter | `store.ts` — `content` + `repo_id` in payload. `searchPoints()` accepts `repoId` filter param. | Add `content: string` and `repo_id: string` to `PointPayload`. Add `repo_id` filter to all search/delete operations. Create `ScopedQdrantClient` wrapper that always injects `repo_id`. | Medium |
-| `search.ts` reads code from disk via `fs.readFile()` | `search.ts` reads code from Qdrant payload `content` field | **Remove `readCodeSnippet()` entirely.** Extract code from Qdrant search response payload. No more filesystem dependency. | Medium |
-| `embedder.ts` — unchanged | Same | No change | None |
-| `walker.ts` — uses git ls-files | Same (worker has a real git clone in /tmp) | No change | None |
-| `chunker/` — uses native `tree-sitter` (C++ N-API) | **Switch to `web-tree-sitter` (WASM)** for cloud. Native tree-sitter is built for darwin-arm64 and will fail in Linux containers (Trigger.dev workers). WASM is platform-independent. | **Critical migration.** Requires: `npm install web-tree-sitter`, load `.wasm` grammar files instead of native `.node` addons, async init (`await Parser.init()`). API is slightly different (async vs sync). | High |
-| `grep.ts` — local ripgrep | **Replaced by Qdrant BM25 full-text search** on `content` payload field | Remove `grep.ts` from `packages/core` (or keep as CLI-only, do not export). New `textSearch()` function queries Qdrant's full-text index. `merge.ts` RRF logic unchanged — just receives results from two Qdrant queries instead of Qdrant + ripgrep. | Medium |
-| `merge.ts` — RRF fusion | Same (receives two result arrays, merges) | No change to algorithm. Input source changes. | None |
-| `index.ts` — CLI entrypoint | Removed (replaced by Trigger.dev tasks in `apps/trigger/`) | Entry point deleted | N/A |
+| Current (CLI)                                         | Cloud (packages/core)                                                                                                                                                                 | Change                                                                                                                                                                                                                                                | Effort |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| `db.ts` uses better-sqlite3 (sync API)                | Replaced by `packages/db` (Drizzle + Neon, async API)                                                                                                                                 | **Delete `db.ts` entirely.** All query functions move to `packages/db`. Every caller must switch from sync to async.                                                                                                                                  | High   |
+| `sync.ts` uses `db.transaction(() => {})()` (sync)    | `sync.ts` uses `db.transaction(async (tx) => {})` (async Drizzle)                                                                                                                     | **Significant refactor.** Extract pure Merkle logic (`buildMerkleTree`, `computeChanges` diffing) into pure functions. Create `SyncStorage` interface for DB I/O. Implement with Drizzle. All transaction code rewritten to async.                    | High   |
+| `store.ts` — no content in payload, no repo_id filter | `store.ts` — `content` + `repo_id` in payload. `searchPoints()` accepts `repoId` filter param.                                                                                        | Add `content: string` and `repo_id: string` to `PointPayload`. Add `repo_id` filter to all search/delete operations. Create `ScopedQdrantClient` wrapper that always injects `repo_id`.                                                               | Medium |
+| `search.ts` reads code from disk via `fs.readFile()`  | `search.ts` reads code from Qdrant payload `content` field                                                                                                                            | **Remove `readCodeSnippet()` entirely.** Extract code from Qdrant search response payload. No more filesystem dependency.                                                                                                                             | Medium |
+| `embedder.ts` — unchanged                             | Same                                                                                                                                                                                  | No change                                                                                                                                                                                                                                             | None   |
+| `walker.ts` — uses git ls-files                       | Same (worker has a real git clone in /tmp)                                                                                                                                            | No change                                                                                                                                                                                                                                             | None   |
+| `chunker/` — uses native `tree-sitter` (C++ N-API)    | **Switch to `web-tree-sitter` (WASM)** for cloud. Native tree-sitter is built for darwin-arm64 and will fail in Linux containers (Trigger.dev workers). WASM is platform-independent. | **Critical migration.** Requires: `npm install web-tree-sitter`, load `.wasm` grammar files instead of native `.node` addons, async init (`await Parser.init()`). API is slightly different (async vs sync).                                          | High   |
+| `grep.ts` — local ripgrep                             | **Replaced by Qdrant BM25 full-text search** on `content` payload field                                                                                                               | Remove `grep.ts` from `packages/core` (or keep as CLI-only, do not export). New `textSearch()` function queries Qdrant's full-text index. `merge.ts` RRF logic unchanged — just receives results from two Qdrant queries instead of Qdrant + ripgrep. | Medium |
+| `merge.ts` — RRF fusion                               | Same (receives two result arrays, merges)                                                                                                                                             | No change to algorithm. Input source changes.                                                                                                                                                                                                         | None   |
+| `index.ts` — CLI entrypoint                           | Removed (replaced by Trigger.dev tasks in `apps/trigger/`)                                                                                                                            | Entry point deleted                                                                                                                                                                                                                                   | N/A    |
 
 **Core principle: The Merkle algorithm and chunking logic stay the same. The I/O boundaries (DB, filesystem, search) are the significant refactors.**
 
@@ -1369,7 +1402,7 @@ export const baseEnv = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']).default('info'),
   DATABASE_URL: z.string().url(),
-})
+});
 
 // apps/web uses:    baseEnv.extend({ GITHUB_APP_PRIVATE_KEY: z.string(), ... })
 // apps/api uses:    baseEnv.extend({ JWT_PUBLIC_KEY: z.string(), OPENAI_API_KEY: z.string(), ... })
@@ -1381,6 +1414,7 @@ export const baseEnv = z.object({
 ## 14. Build Phases
 
 ### Phase 1: Foundation (Week 1-2)
+
 - [ ] Set up monorepo (Turborepo, packages/core, packages/db, packages/config)
 - [ ] Migrate existing CLI code to packages/core
 - [ ] Set up Neon Postgres + Drizzle schema + migrations
@@ -1389,6 +1423,7 @@ export const baseEnv = z.object({
 - [ ] GitHub App creation + installation webhook handler
 
 ### Phase 2: Indexing Pipeline (Week 3-4)
+
 - [ ] **Switch chunker/ from native tree-sitter to web-tree-sitter (WASM)** — CRITICAL for Trigger.dev Linux workers
 - [ ] Refactor sync.ts: extract pure Merkle logic, create SyncStorage interface, implement async Drizzle version
 - [ ] Set up Trigger.dev with index-repo task
@@ -1401,6 +1436,7 @@ export const baseEnv = z.object({
 - [ ] Guard: concurrent index + sync race condition (queue SHA if initial index running)
 
 ### Phase 3: Search + Web IDE (Week 5-6)
+
 - [ ] Hono API server setup on Fly.io
 - [ ] JWT auth: RS256 asymmetric (Next.js signs with private key, Hono verifies with public key)
 - [ ] JWT claims: iss, aud, sub, email, exp
@@ -1412,6 +1448,7 @@ export const baseEnv = z.object({
 - [ ] Search bar in web IDE
 
 ### Phase 4: Chat Agent (Week 7-8)
+
 - [ ] Chat endpoint with SSE streaming (direct, not via Trigger.dev)
 - [ ] Vercel AI SDK useChat integration in frontend
 - [ ] Claude API with tool use (search_code, read_file with path sanitization, list_files)
@@ -1420,6 +1457,7 @@ export const baseEnv = z.object({
 - [ ] **Global cost circuit breaker** — daily spend cap on Claude API, pause chat if exceeded
 
 ### Phase 5: Observability + Polish (Week 9-10)
+
 - [ ] Sentry error tracking (do this first — 5 min setup, high value)
 - [ ] Global error handler: sanitize error responses (never leak internals to client)
 - [ ] OpenTelemetry instrumentation (Hono + Next.js) → Grafana Cloud (defer if tight on time)
@@ -1429,6 +1467,7 @@ export const baseEnv = z.object({
 - [ ] Cron tasks: stale repo check, index health verification (defer to Phase 5+)
 
 ### Phase 6: Coding Agent (Future)
+
 - [ ] Claude Agent SDK integration for multi-step editing
 - [ ] Propose changes → diff view → user approval
 - [ ] Create PR via GitHub App installation token
@@ -1440,21 +1479,21 @@ export const baseEnv = z.object({
 
 ### 15.1 Environments
 
-| Environment | Purpose | When deployed | Data |
-|-------------|---------|--------------|------|
-| **Preview** | PR review — every PR gets its own deployment | On every PR push | Shared dev database (Neon branch) |
-| **Staging** | Pre-production validation, integration testing | On merge to `staging` branch | Dedicated staging database + Qdrant collection |
-| **Production** | Live users | On merge to `main` | Production database + Qdrant collection |
+| Environment    | Purpose                                        | When deployed                | Data                                           |
+| -------------- | ---------------------------------------------- | ---------------------------- | ---------------------------------------------- |
+| **Preview**    | PR review — every PR gets its own deployment   | On every PR push             | Shared dev database (Neon branch)              |
+| **Staging**    | Pre-production validation, integration testing | On merge to `staging` branch | Dedicated staging database + Qdrant collection |
+| **Production** | Live users                                     | On merge to `main`           | Production database + Qdrant collection        |
 
 **Neon branching** is key here — every preview environment gets an instant copy-on-write database branch. Zero cost, instant creation, full schema parity with production.
 
 ### 15.2 Per-Service Deployment
 
-| Service | Preview | Staging | Production |
-|---------|---------|---------|------------|
-| **Next.js (Vercel)** | Automatic preview deploy per PR (Vercel built-in) | Deploy on `staging` branch push | Deploy on `main` branch push |
-| **Hono API (Fly.io)** | N/A (PR previews hit staging API) | `fly deploy --config fly.staging.toml` | `fly deploy --config fly.production.toml` |
-| **Trigger.dev** | N/A (PR previews use staging tasks) | `npx trigger.dev deploy --env staging` | `npx trigger.dev deploy --env production` |
+| Service               | Preview                                           | Staging                                | Production                                |
+| --------------------- | ------------------------------------------------- | -------------------------------------- | ----------------------------------------- |
+| **Next.js (Vercel)**  | Automatic preview deploy per PR (Vercel built-in) | Deploy on `staging` branch push        | Deploy on `main` branch push              |
+| **Hono API (Fly.io)** | N/A (PR previews hit staging API)                 | `fly deploy --config fly.staging.toml` | `fly deploy --config fly.production.toml` |
+| **Trigger.dev**       | N/A (PR previews use staging tasks)               | `npx trigger.dev deploy --env staging` | `npx trigger.dev deploy --env production` |
 
 ### 15.3 GitHub Actions Workflows
 
@@ -1466,6 +1505,7 @@ export const baseEnv = z.object({
 ```
 
 **`ci.yml` — runs on every PR push:**
+
 ```yaml
 name: CI
 on:
@@ -1488,6 +1528,7 @@ jobs:
 ```
 
 **`deploy-staging.yml` — on merge to `staging`:**
+
 ```yaml
 name: Deploy Staging
 on:
@@ -1525,15 +1566,15 @@ Same as staging but with `fly.production.toml` and `--env production`.
 
 Each environment gets its own set of secrets:
 
-| Variable | Preview | Staging | Production |
-|----------|---------|---------|------------|
-| `DATABASE_URL` | Neon branch URL (auto-created) | Staging Neon DB | Production Neon DB |
-| `QDRANT_URL` | Staging Qdrant | Staging Qdrant | Production Qdrant |
-| `R2_BUCKET` | `codeindexer-staging` | `codeindexer-staging` | `codeindexer-prod` |
-| `OPENAI_API_KEY` | Shared dev key | Staging key | Production key |
-| `ANTHROPIC_API_KEY` | Shared dev key | Staging key | Production key |
-| `GITHUB_APP_*` | Dev GitHub App | Staging GitHub App | Production GitHub App |
-| `JWT_PRIVATE_KEY` | Dev keypair | Staging keypair | Production keypair |
+| Variable            | Preview                        | Staging               | Production            |
+| ------------------- | ------------------------------ | --------------------- | --------------------- |
+| `DATABASE_URL`      | Neon branch URL (auto-created) | Staging Neon DB       | Production Neon DB    |
+| `QDRANT_URL`        | Staging Qdrant                 | Staging Qdrant        | Production Qdrant     |
+| `R2_BUCKET`         | `codeindexer-staging`          | `codeindexer-staging` | `codeindexer-prod`    |
+| `OPENAI_API_KEY`    | Shared dev key                 | Staging key           | Production key        |
+| `ANTHROPIC_API_KEY` | Shared dev key                 | Staging key           | Production key        |
+| `GITHUB_APP_*`      | Dev GitHub App                 | Staging GitHub App    | Production GitHub App |
+| `JWT_PRIVATE_KEY`   | Dev keypair                    | Staging keypair       | Production keypair    |
 
 **Separate GitHub Apps per environment** — prevents staging webhooks from triggering production re-indexes.
 
@@ -1557,21 +1598,21 @@ feature/xyz (development)
 
 ## 16. Cost Estimate (Early Stage — <100 users)
 
-| Service | Tier | Monthly cost | First paid upgrade trigger |
-|---------|------|-------------|--------------------------|
-| Vercel | Free tier | $0 | Bandwidth >100GB → Hobby $20/mo |
-| Fly.io | ~$5/mo | $5 | Fixed |
-| Trigger.dev | Free ($5 included) | $0 | >$5 compute → Hobby $30/mo (~200 repos with regular syncs) |
-| Neon Postgres | Free (100 CU-hrs, 500MB) | $0 | Storage >500MB → Launch $19/mo (~100 repos with active chat) |
-| Qdrant Cloud | Free (1GB) | $0 | >1GB → paid cluster $25+/mo (~100-200 repos with content in payload) |
-| Cloudflare R2 | Free (10GB, zero egress) | $0 | Storage >10GB (~200 repos) |
-| OpenAI Embeddings | ~$0.02/1M tokens | ~$1-3 | Scales linearly, stays cheap |
-| Claude API | Usage-based | ~$10-50 | **Dominant cost.** ~$0.03/chat turn (Sonnet). 1000 turns/day = $30/mo. Needs circuit breaker. |
-| Resend | Free (3000 emails/mo) | $0 | >3000 emails → $20/mo |
-| Grafana Cloud | Free tier | $0 | Deferred to Phase 5 |
-| Sentry | Free (5K events/mo) | $0 | Very generous for early stage |
-| **Total (launch)** | | **~$16-58/mo** | |
-| **Total (100 active users)** | | **~$60-150/mo** | Qdrant + Claude API dominate |
+| Service                      | Tier                     | Monthly cost    | First paid upgrade trigger                                                                    |
+| ---------------------------- | ------------------------ | --------------- | --------------------------------------------------------------------------------------------- |
+| Vercel                       | Free tier                | $0              | Bandwidth >100GB → Hobby $20/mo                                                               |
+| Fly.io                       | ~$5/mo                   | $5              | Fixed                                                                                         |
+| Trigger.dev                  | Free ($5 included)       | $0              | >$5 compute → Hobby $30/mo (~200 repos with regular syncs)                                    |
+| Neon Postgres                | Free (100 CU-hrs, 500MB) | $0              | Storage >500MB → Launch $19/mo (~100 repos with active chat)                                  |
+| Qdrant Cloud                 | Free (1GB)               | $0              | >1GB → paid cluster $25+/mo (~100-200 repos with content in payload)                          |
+| Cloudflare R2                | Free (10GB, zero egress) | $0              | Storage >10GB (~200 repos)                                                                    |
+| OpenAI Embeddings            | ~$0.02/1M tokens         | ~$1-3           | Scales linearly, stays cheap                                                                  |
+| Claude API                   | Usage-based              | ~$10-50         | **Dominant cost.** ~$0.03/chat turn (Sonnet). 1000 turns/day = $30/mo. Needs circuit breaker. |
+| Resend                       | Free (3000 emails/mo)    | $0              | >3000 emails → $20/mo                                                                         |
+| Grafana Cloud                | Free tier                | $0              | Deferred to Phase 5                                                                           |
+| Sentry                       | Free (5K events/mo)      | $0              | Very generous for early stage                                                                 |
+| **Total (launch)**           |                          | **~$16-58/mo**  |                                                                                               |
+| **Total (100 active users)** |                          | **~$60-150/mo** | Qdrant + Claude API dominate                                                                  |
 
 ---
 
@@ -1611,6 +1652,7 @@ feature/xyz (development)
 ## 17. References
 
 ### Architecture Research
+
 - [Cursor + Turbopuffer: 100B vectors at scale](https://turbopuffer.com/customers/cursor)
 - [How Cursor indexes codebases](https://towardsdatascience.com/how-cursor-actually-indexes-your-codebase/)
 - [Cursor Cloud Agents: Computer Use](https://cursor.com/blog/agent-computer-use)
@@ -1618,23 +1660,27 @@ feature/xyz (development)
 - [Building Real-Time AI Chat Infrastructure](https://render.com/articles/real-time-ai-chat-websockets-infrastructure)
 
 ### Auth
+
 - [Better Auth docs](https://better-auth.com/)
 - [GitHub App vs OAuth App](https://nango.dev/blog/github-app-vs-github-oauth)
 - [GitHub App installation tokens](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app)
 - [OpenStatus: Clerk → Auth.js migration](https://www.openstatus.dev/blog/migration-auth-clerk-to-next-auth)
 
 ### Streaming
+
 - [How ChatGPT streams responses](https://blog.theodormarcu.com/p/how-chatgpt-streams-responses-back)
-- [SSE: The Streaming Backbone of LLMs](https://procedure.tech/blogs/the-streaming-backbone-of-llms-why-server-sent-events-(sse)-still-wins-in-2025)
+- [SSE: The Streaming Backbone of LLMs](<https://procedure.tech/blogs/the-streaming-backbone-of-llms-why-server-sent-events-(sse)-still-wins-in-2025>)
 - [Claude Streaming Messages docs](https://platform.claude.com/docs/en/build-with-claude/streaming)
 
 ### Agent SDKs
+
 - [Claude Agent SDK overview](https://platform.claude.com/docs/en/agent-sdk/overview)
 - [Vercel AI SDK docs](https://ai-sdk.dev/docs/introduction)
 - [Vercel Coding Agent Platform template](https://vercel.com/templates/ai/coding-agent-platform)
 - [Trigger.dev AI Agents](https://trigger.dev/product/ai-agents)
 
 ### Infrastructure
+
 - [Trigger.dev Realtime Streams v2](https://trigger.dev/changelog/realtime-streams-v2)
 - [Qdrant multitenancy guide](https://qdrant.tech/documentation/guides/multitenancy/)
 - [Cloudflare R2](https://www.cloudflare.com/developer-platform/products/r2/)

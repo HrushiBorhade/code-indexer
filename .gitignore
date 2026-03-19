@@ -1,8 +1,10 @@
 node_modules/
 dist/
+.next/
 .env
 .env.local
 *.wasm
 *.tsbuildinfo
+.turbo/
 .code-indexer/
 .superpowers/

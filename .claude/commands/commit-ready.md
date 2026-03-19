@@ -9,6 +9,7 @@ Run all CI checks locally to verify the code is ready to commit. Run these comma
 If ALL checks pass: Tell me the code is commit-ready and suggest the git add + commit commands with an appropriate commit message based on what changed (check git diff and git status).
 
 If ANY check fails:
+
 - Show exactly what failed
 - Run the auto-fix if available (`npm run format` for prettier, `npm run lint:fix` for eslint)
 - Re-run the failed check to confirm it's fixed
