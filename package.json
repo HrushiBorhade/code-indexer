@@ -1,67 +1,28 @@
 {
-  "name": "code-indexer",
-  "version": "0.1.0",
-  "description": "Cursor-inspired semantic code search engine",
-  "type": "module",
-  "bin": {
-    "code-indexer": "./dist/index.js"
-  },
+  "name": "codeindexer",
+  "private": true,
   "scripts": {
-    "dev": "tsx src/index.ts",
-    "dev:index": "tsx src/index.ts index",
-    "dev:search": "tsx src/index.ts search",
-    "dev:watch": "tsx src/index.ts watch",
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix",
-    "format": "prettier --write src/",
-    "format:check": "prettier --check src/",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "clean": "rm -rf dist"
-  },
-  "engines": {
-    "node": ">=20.0.0"
-  },
-  "keywords": [
-    "code-search",
-    "semantic-search",
-    "tree-sitter",
-    "embeddings"
-  ],
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "better-sqlite3": "^12.8.0",
-    "commander": "^14.0.3",
-    "dotenv": "^16.6.1",
-    "fast-glob": "^3.3.3",
-    "pino": "^10.3.1",
-    "pino-pretty": "^13.1.3",
-    "tree-sitter": "^0.21.1",
-    "tree-sitter-css": "^0.21.1",
-    "tree-sitter-go": "^0.21.2",
-    "tree-sitter-javascript": "^0.21.4",
-    "tree-sitter-python": "^0.21.0",
-    "tree-sitter-rust": "^0.21.0",
-    "tree-sitter-typescript": "^0.23.2",
-    "zod": "^4.3.6"
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "dev:web": "turbo run dev --filter=@codeindexer/web",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,md,json}\"",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "db:push": "turbo run db:push --filter=@codeindexer/db",
+    "db:generate": "turbo run db:generate --filter=@codeindexer/db",
+    "db:studio": "turbo run db:studio --filter=@codeindexer/db",
+    "clean": "turbo run clean && rm -rf node_modules .turbo"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^22.19.15",
-    "@types/pino-pretty": "^4.7.5",
-    "@vitest/coverage-v8": "^4.1.0",
-    "eslint": "^10.0.3",
-    "eslint-config-prettier": "^10.1.8",
+    "turbo": "^2.4.4",
     "prettier": "^3.8.1",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.57.0",
-    "vitest": "^4.1.0"
+    "typescript": "^5.9.3"
+  },
+  "packageManager": "pnpm@10.11.0",
+  "engines": {
+    "node": ">=20.0.0"
   }
 }
