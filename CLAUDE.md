@@ -1,13 +1,16 @@
 # CodeIndexer
 
 ## What
+
 A Cursor-inspired semantic code search engine and AI-powered code assistant platform. Started as a CLI tool (Phases 1-6, complete), now building the web platform.
 
 ## Current State
+
 - **CLI (complete):** 6 phases shipped — AST chunking, embeddings, vector store, semantic search, hybrid search (RRF), incremental sync (Merkle trees). 152 tests passing.
 - **Platform (in progress):** Design spec merged at `docs/specs/platform-design.md`. Implementation starting.
 
 ## CLI Stack (src/ — existing, working)
+
 - **Runtime:** Node.js + tsx
 - **Parsing:** tree-sitter (native N-API) + grammars for TS/JS/Python/Rust/Go/CSS
 - **Embeddings:** OpenAI `text-embedding-3-small` (1536-dim). Also supports Voyage AI `voyage-code-3` (1024-dim).
@@ -19,11 +22,13 @@ A Cursor-inspired semantic code search engine and AI-powered code assistant plat
 ## Platform Architecture (docs/specs/platform-design.md)
 
 Three services:
+
 1. **Next.js (Vercel)** — UI, auth, webhooks, dashboard, web IDE
 2. **Hono API (Fly.io)** — Chat/agent SSE streaming, search API, file serving
 3. **Trigger.dev (Cloud)** — Background indexing, sync, cleanup
 
 Data layer:
+
 - **Neon Postgres** (Drizzle ORM) — users, repos, hashes, conversations, jobs
 - **Qdrant Cloud** — vectors + chunk content in payload, BM25 full-text search
 - **Cloudflare R2** — repo tarballs, exploded files, file-tree.json
@@ -31,6 +36,7 @@ Data layer:
 - **OpenAI API** — embeddings only
 
 Key decisions:
+
 - **Auth:** Better Auth (GitHub OAuth) + GitHub App (installation tokens, push webhooks, RS256 JWT)
 - **Chat streaming:** Direct SSE from Hono → Claude (NOT via task queue). Users stare at streaming = persistent server. Background jobs = task queue.
 - **Search:** Qdrant vector + BM25 on `content` payload → RRF merge (replaces ripgrep in cloud)
@@ -45,6 +51,7 @@ CI/CD: GitHub Actions (format, lint, typecheck, test, build) on every PR. Auto-d
 Observability: Vercel OTEL + Analytics + PostHog + Clarity + Sentry (frontend). OpenTelemetry → Grafana Cloud (API/workers). Better Stack uptime + Slack alerting.
 
 ## Build Phases (Platform)
+
 1. **Foundation** — Monorepo (Turborepo), Drizzle schema, Better Auth, GitHub App, dashboard
 2. **Indexing** — web-tree-sitter, Trigger.dev tasks, Merkle refactor, R2 uploads
 3. **Search + Web IDE** — Hono API on Fly.io, JWT bridge, search, file viewer, rate limiting
@@ -53,6 +60,7 @@ Observability: Vercel OTEL + Analytics + PostHog + Clarity + Sentry (frontend). 
 6. **Coding Agent** (future) — multi-step editing, PR creation
 
 ## File Structure (CLI — existing)
+
 ```
 src/
 ├── chunker/        # AST chunking (tree-sitter) + text chunking (md/json/yaml/sql)
@@ -73,6 +81,7 @@ src/
 ```
 
 ## Platform Monorepo Structure (planned)
+
 ```
 apps/
 ├── web/        # Next.js (Vercel)
@@ -86,6 +95,7 @@ packages/
 ```
 
 ## CLI Usage
+
 ```bash
 npx tsx index.ts index          # index codebase
 npx tsx index.ts search "query" # search with --mode semantic|grep|hybrid
@@ -93,6 +103,7 @@ npx tsx index.ts watch          # live re-indexing
 ```
 
 ## Commands
+
 ```bash
 npm run format:check  # Prettier
 npm run lint          # ESLint
@@ -102,6 +113,7 @@ npm run build         # tsc
 ```
 
 ## Conventions
+
 - NEVER add Co-Authored-By, "Generated with Claude Code", or any AI attribution to commits, PRs, or issues
 - Always run /commit-ready BEFORE pushing or creating PRs, never after
 - User is learning backend/infra — explain concepts before coding

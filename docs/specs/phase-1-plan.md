@@ -14,6 +14,7 @@
 ## What Phase 1 Delivers
 
 A user can:
+
 1. Visit the app
 2. Sign in with GitHub
 3. Install the GitHub App and grant repo access
@@ -26,15 +27,15 @@ That's it. No search, no chat, no Hono API, no Trigger.dev. Those come when we n
 
 ## Steps
 
-| # | Step | Verify before moving on |
-|---|------|------------------------|
-| 1 | pnpm + Turborepo monorepo | `pnpm install` works, directory structure exists |
-| 2 | Move `src/` → `packages/core` | `pnpm --filter @codeindexer/core test` — all 152 tests pass |
-| 3 | `packages/db` — Drizzle + Neon | `pnpm db:push` creates tables, visible in Drizzle Studio |
-| 4 | `apps/web` — Next.js 16 + shadcn | `pnpm dev:web` → browser shows page at localhost:3000 |
-| 5 | Better Auth + GitHub OAuth + DAL | Sign in with GitHub → see your name on /dashboard |
-| 6 | GitHub App + webhook handler | Install app → repo row appears in Postgres |
-| 7 | Dashboard UI | Full flow: sign in → empty state → add repo → see it listed |
+| #   | Step                             | Verify before moving on                                     |
+| --- | -------------------------------- | ----------------------------------------------------------- |
+| 1   | pnpm + Turborepo monorepo        | `pnpm install` works, directory structure exists            |
+| 2   | Move `src/` → `packages/core`    | `pnpm --filter @codeindexer/core test` — all 152 tests pass |
+| 3   | `packages/db` — Drizzle + Neon   | `pnpm db:push` creates tables, visible in Drizzle Studio    |
+| 4   | `apps/web` — Next.js 16 + shadcn | `pnpm dev:web` → browser shows page at localhost:3000       |
+| 5   | Better Auth + GitHub OAuth + DAL | Sign in with GitHub → see your name on /dashboard           |
+| 6   | GitHub App + webhook handler     | Install app → repo row appears in Postgres                  |
+| 7   | Dashboard UI                     | Full flow: sign in → empty state → add repo → see it listed |
 
 ---
 
@@ -67,13 +68,15 @@ Before coding, understand these:
 ### Files to create
 
 **`pnpm-workspace.yaml`:**
+
 ```yaml
 packages:
-  - "apps/*"
-  - "packages/*"
+  - 'apps/*'
+  - 'packages/*'
 ```
 
 **`.npmrc`:**
+
 ```ini
 auto-install-peers=true
 strict-peer-dependencies=false
@@ -83,6 +86,7 @@ public-hoist-pattern[]=*.node
 > `public-hoist-pattern[]=*.node` — pnpm's strict isolation can break native module (.node binary) resolution for tree-sitter and better-sqlite3. This hoists native binaries so they resolve correctly at runtime.
 
 **`packages/tsconfig/package.json`:**
+
 ```json
 {
   "name": "@codeindexer/tsconfig",
@@ -97,6 +101,7 @@ public-hoist-pattern[]=*.node
 ```
 
 **`packages/tsconfig/base.json`:**
+
 ```json
 {
   "$schema": "https://json.schemastore.org/tsconfig",
@@ -120,6 +125,7 @@ public-hoist-pattern[]=*.node
 ```
 
 **`packages/tsconfig/library.json`:**
+
 ```json
 {
   "$schema": "https://json.schemastore.org/tsconfig",
@@ -132,6 +138,7 @@ public-hoist-pattern[]=*.node
 ```
 
 **`packages/tsconfig/nextjs.json`:**
+
 ```json
 {
   "$schema": "https://json.schemastore.org/tsconfig",
@@ -148,6 +155,7 @@ public-hoist-pattern[]=*.node
 ```
 
 **Root `package.json`** (replaces existing):
+
 ```json
 {
   "name": "codeindexer",
@@ -180,6 +188,7 @@ public-hoist-pattern[]=*.node
 ```
 
 **`turbo.json`:**
+
 ```json
 {
   "$schema": "https://turbo.build/schema.json",
@@ -187,8 +196,13 @@ public-hoist-pattern[]=*.node
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "env": ["DATABASE_URL", "BETTER_AUTH_SECRET", "BETTER_AUTH_URL",
-              "NEXT_PUBLIC_BETTER_AUTH_URL", "GITHUB_CLIENT_ID"],
+      "env": [
+        "DATABASE_URL",
+        "BETTER_AUTH_SECRET",
+        "BETTER_AUTH_URL",
+        "NEXT_PUBLIC_BETTER_AUTH_URL",
+        "GITHUB_CLIENT_ID"
+      ],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
     },
     "dev": {
@@ -221,6 +235,7 @@ public-hoist-pattern[]=*.node
 > **No `globalDependencies: [".env"]`** — per Turborepo docs, this invalidates ALL caches on any env change. Instead, use per-task `env` arrays with explicit var names. `test` has `inputs` so turbo caches test results when source hasn't changed.
 
 **`.env.example`** (created now, updated throughout):
+
 ```bash
 # ─── Database (use pooled connection string: -pooler hostname) ───
 DATABASE_URL=postgresql://user:pass@ep-xxx-pooler.us-east-2.aws.neon.tech/codeindexer?sslmode=require
@@ -255,11 +270,13 @@ pnpm install
 ```
 
 ### Verify
+
 - [ ] `pnpm install` completes without errors
 - [ ] `pnpm-lock.yaml` generated
 - [ ] `ls node_modules/.pnpm` shows the content store
 
 ### Commit
+
 ```
 feat: convert to pnpm + Turborepo monorepo
 ```
@@ -278,6 +295,7 @@ feat: convert to pnpm + Turborepo monorepo
 ### Files
 
 **`packages/core/package.json`:**
+
 ```json
 {
   "name": "@codeindexer/core",
@@ -341,6 +359,7 @@ feat: convert to pnpm + Turborepo monorepo
 ```
 
 **`packages/core/tsconfig.json`:**
+
 ```json
 {
   "extends": "@codeindexer/tsconfig/library.json",
@@ -353,24 +372,25 @@ feat: convert to pnpm + Turborepo monorepo
 ```
 
 **`packages/core/src/index.ts`** — barrel export:
+
 ```typescript
-export { chunkFile } from './chunker/index.js'
-export type { Chunk } from './chunker/types.js'
-export { walkFiles } from './lib/walker.js'
-export { hashFile, hashString } from './lib/hash.js'
-export { embedChunks, embedQuery, getProvider } from './lib/embedder.js'
-export { ensureCollection, upsertPoints, deletePoints, searchPoints } from './lib/store.js'
-export type { PointPayload, SearchResult, UpsertPoint } from './lib/store.js'
-export { semanticSearch } from './lib/search.js'
-export type { CodeSearchResult } from './lib/search.js'
-export { grepSearch } from './lib/grep.js'
-export { mergeResults } from './lib/merge.js'
-export { computeChanges, persistMerkleState } from './lib/sync.js'
-export type { SyncResult } from './lib/sync.js'
-export { initDb, closeDb } from './lib/db.js'
-export { getLanguage, getSupportedExtensions, LANGUAGE_MAP } from './lib/languages.js'
-export { createLogger } from './utils/logger.js'
-export { onShutdown, registerShutdownHandlers } from './lib/shutdown.js'
+export { chunkFile } from './chunker/index.js';
+export type { Chunk } from './chunker/types.js';
+export { walkFiles } from './lib/walker.js';
+export { hashFile, hashString } from './lib/hash.js';
+export { embedChunks, embedQuery, getProvider } from './lib/embedder.js';
+export { ensureCollection, upsertPoints, deletePoints, searchPoints } from './lib/store.js';
+export type { PointPayload, SearchResult, UpsertPoint } from './lib/store.js';
+export { semanticSearch } from './lib/search.js';
+export type { CodeSearchResult } from './lib/search.js';
+export { grepSearch } from './lib/grep.js';
+export { mergeResults } from './lib/merge.js';
+export { computeChanges, persistMerkleState } from './lib/sync.js';
+export type { SyncResult } from './lib/sync.js';
+export { initDb, closeDb } from './lib/db.js';
+export { getLanguage, getSupportedExtensions, LANGUAGE_MAP } from './lib/languages.js';
+export { createLogger } from './utils/logger.js';
+export { onShutdown, registerShutdownHandlers } from './lib/shutdown.js';
 ```
 
 ### Actions
@@ -389,6 +409,7 @@ pnpm install
 ```
 
 ### Verify
+
 - [ ] `pnpm install` succeeds
 - [ ] `pnpm --filter @codeindexer/core test` — all 152 tests pass
 - [ ] `pnpm --filter @codeindexer/core typecheck` passes
@@ -396,6 +417,7 @@ pnpm install
 - [ ] `ls src/` — should not exist (deleted)
 
 ### Commit
+
 ```
 refactor: move library code to packages/core as JIT package
 ```
@@ -420,6 +442,7 @@ refactor: move library code to packages/core as JIT package
 ### Files
 
 **`packages/db/package.json`:**
+
 ```json
 {
   "name": "@codeindexer/db",
@@ -456,6 +479,7 @@ refactor: move library code to packages/core as JIT package
 > `@types/node` explicitly listed — prevents phantom dependency on hoisted types.
 
 **`packages/db/tsconfig.json`:**
+
 ```json
 {
   "extends": "@codeindexer/tsconfig/library.json",
@@ -468,12 +492,13 @@ refactor: move library code to packages/core as JIT package
 ```
 
 **`packages/db/drizzle.config.ts`:**
+
 ```typescript
-import { config } from 'dotenv'
-import { defineConfig } from 'drizzle-kit'
+import { config } from 'dotenv';
+import { defineConfig } from 'drizzle-kit';
 
 // Explicit path — Turborepo changes cwd to packages/db/ when running tasks
-config({ path: new URL('../../.env', import.meta.url).pathname })
+config({ path: new URL('../../.env', import.meta.url).pathname });
 
 export default defineConfig({
   out: './drizzle',
@@ -482,7 +507,7 @@ export default defineConfig({
   dbCredentials: {
     url: process.env.DATABASE_URL!,
   },
-})
+});
 ```
 
 > **Fix from review:** `dotenv/config` auto-import doesn't find root `.env` when cwd is `packages/db/`. Explicit path resolves this.
@@ -501,7 +526,7 @@ import {
   jsonb,
   uniqueIndex,
   index,
-} from 'drizzle-orm/pg-core'
+} from 'drizzle-orm/pg-core';
 
 // ════════════════════════════════════════════════════════
 // Better Auth tables
@@ -521,7 +546,7 @@ export const user = pgTable('user', {
   image: text('image'),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
-})
+});
 
 export const session = pgTable('session', {
   id: text('id').primaryKey(),
@@ -534,7 +559,7 @@ export const session = pgTable('session', {
     .references(() => user.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
-})
+});
 
 export const account = pgTable('account', {
   id: text('id').primaryKey(),
@@ -547,12 +572,15 @@ export const account = pgTable('account', {
   refreshToken: text('refresh_token'),
   idToken: text('id_token'),
   accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true, mode: 'date' }),
-  refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true, mode: 'date' }),
+  refreshTokenExpiresAt: timestamp('refresh_token_expires_at', {
+    withTimezone: true,
+    mode: 'date',
+  }),
   scope: text('scope'),
   password: text('password'),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
-})
+});
 
 export const verification = pgTable('verification', {
   id: text('id').primaryKey(),
@@ -561,7 +589,7 @@ export const verification = pgTable('verification', {
   expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }),
-})
+});
 
 // ════════════════════════════════════════════════════════
 // Application tables (spec Section 5)
@@ -591,26 +619,30 @@ export const repos = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
-  (table) => [uniqueIndex('repos_user_github_idx').on(table.userId, table.githubId)]
-)
+  (table) => [uniqueIndex('repos_user_github_idx').on(table.userId, table.githubId)],
+);
 
 export const fileHashes = pgTable(
   'file_hashes',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    repoId: uuid('repo_id').notNull().references(() => repos.id, { onDelete: 'cascade' }),
+    repoId: uuid('repo_id')
+      .notNull()
+      .references(() => repos.id, { onDelete: 'cascade' }),
     filePath: text('file_path').notNull(),
     sha256: text('sha256').notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
-  (table) => [uniqueIndex('file_hashes_repo_path_idx').on(table.repoId, table.filePath)]
-)
+  (table) => [uniqueIndex('file_hashes_repo_path_idx').on(table.repoId, table.filePath)],
+);
 
 export const chunkCache = pgTable(
   'chunk_cache',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    repoId: uuid('repo_id').notNull().references(() => repos.id, { onDelete: 'cascade' }),
+    repoId: uuid('repo_id')
+      .notNull()
+      .references(() => repos.id, { onDelete: 'cascade' }),
     chunkHash: text('chunk_hash').notNull(),
     qdrantId: text('qdrant_id').notNull(),
     filePath: text('file_path').notNull(),
@@ -620,29 +652,35 @@ export const chunkCache = pgTable(
   (table) => [
     uniqueIndex('chunk_cache_repo_hash_idx').on(table.repoId, table.chunkHash),
     index('chunk_cache_repo_file_idx').on(table.repoId, table.filePath),
-  ]
-)
+  ],
+);
 
 export const dirHashes = pgTable(
   'dir_hashes',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    repoId: uuid('repo_id').notNull().references(() => repos.id, { onDelete: 'cascade' }),
+    repoId: uuid('repo_id')
+      .notNull()
+      .references(() => repos.id, { onDelete: 'cascade' }),
     dirPath: text('dir_path').notNull(),
     merkleHash: text('merkle_hash').notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
-  (table) => [uniqueIndex('dir_hashes_repo_path_idx').on(table.repoId, table.dirPath)]
-)
+  (table) => [uniqueIndex('dir_hashes_repo_path_idx').on(table.repoId, table.dirPath)],
+);
 
 export const conversations = pgTable('conversations', {
   id: uuid('id').primaryKey().defaultRandom(),
-  repoId: uuid('repo_id').notNull().references(() => repos.id, { onDelete: 'cascade' }),
-  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  repoId: uuid('repo_id')
+    .notNull()
+    .references(() => repos.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
   title: text('title'),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
-})
+});
 
 export const messages = pgTable(
   'messages',
@@ -659,12 +697,14 @@ export const messages = pgTable(
     model: text('model'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
-  (table) => [index('messages_convo_idx').on(table.conversationId, table.createdAt)]
-)
+  (table) => [index('messages_convo_idx').on(table.conversationId, table.createdAt)],
+);
 
 export const indexJobs = pgTable('index_jobs', {
   id: uuid('id').primaryKey().defaultRandom(),
-  repoId: uuid('repo_id').notNull().references(() => repos.id, { onDelete: 'cascade' }),
+  repoId: uuid('repo_id')
+    .notNull()
+    .references(() => repos.id, { onDelete: 'cascade' }),
   triggerRunId: text('trigger_run_id'),
   status: text('status').notNull().default('pending'),
   trigger: text('trigger').notNull(),
@@ -676,10 +716,11 @@ export const indexJobs = pgTable('index_jobs', {
   startedAt: timestamp('started_at', { withTimezone: true, mode: 'date' }),
   completedAt: timestamp('completed_at', { withTimezone: true, mode: 'date' }),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
-})
+});
 ```
 
 > **Fixes from review:**
+>
 > - `githubId` and `installationId` use `mode: 'bigint'` — prevents silent data corruption for IDs > 2^53
 > - Added `isPrivate` boolean column — needed for UI display and future billing/plan decisions
 > - Added `boolean` import from `drizzle-orm/pg-core`
@@ -687,30 +728,32 @@ export const indexJobs = pgTable('index_jobs', {
 **`packages/db/src/relations.ts`:** (unchanged from before — see old plan for full code)
 
 **`packages/db/src/client.ts`:**
+
 ```typescript
-import { drizzle } from 'drizzle-orm/neon-http'
-import { neon } from '@neondatabase/serverless'
-import * as schema from './schema.js'
-import * as relations from './relations.js'
+import { drizzle } from 'drizzle-orm/neon-http';
+import { neon } from '@neondatabase/serverless';
+import * as schema from './schema.js';
+import * as relations from './relations.js';
 
 export function createDb(databaseUrl: string) {
   if (!databaseUrl) {
-    throw new Error('DATABASE_URL is required — check your .env file')
+    throw new Error('DATABASE_URL is required — check your .env file');
   }
-  const sql = neon(databaseUrl)
-  return drizzle({ client: sql, schema: { ...schema, ...relations } })
+  const sql = neon(databaseUrl);
+  return drizzle({ client: sql, schema: { ...schema, ...relations } });
 }
 
-export type Database = ReturnType<typeof createDb>
+export type Database = ReturnType<typeof createDb>;
 ```
 
 > **Fix from review:** Explicit error message instead of silent `undefined` passed to Neon.
 
 **`packages/db/src/index.ts`:**
+
 ```typescript
-export * from './schema.js'
-export * from './relations.js'
-export { createDb, type Database } from './client.js'
+export * from './schema.js';
+export * from './relations.js';
+export { createDb, type Database } from './client.js';
 ```
 
 ### Actions
@@ -726,6 +769,7 @@ pnpm db:studio
 > **Note:** Migration files in `packages/db/drizzle/` should be committed to Git. They are the source of truth for schema history.
 
 ### Verify
+
 - [ ] `pnpm install` succeeds
 - [ ] `pnpm db:push` succeeds — no SQL errors
 - [ ] `pnpm db:studio` shows all 11 tables
@@ -734,6 +778,7 @@ pnpm db:studio
 - [ ] Neon cold start note: first query may take 3-7s on free tier. This is normal.
 
 ### Commit
+
 ```
 feat: add packages/db with Drizzle schema for Neon Postgres
 ```
@@ -761,11 +806,13 @@ cd ..
 > **No `--turbopack` flag** — Turbopack is the default in Next.js 16.
 
 Update `apps/web/package.json`:
+
 - Set `"name": "@codeindexer/web"`
 - Add `"@codeindexer/db": "workspace:*"` to dependencies
 - Do NOT add `@codeindexer/core` — native modules will break Turbopack
 
 Replace `apps/web/tsconfig.json` with the **full merged content** (preserve paths alias):
+
 ```json
 {
   "extends": "@codeindexer/tsconfig/nextjs.json",
@@ -780,33 +827,39 @@ Replace `apps/web/tsconfig.json` with the **full merged content** (preserve path
 ```
 
 Add `apps/web/next.config.ts` with security headers and native module guardrail:
+
 ```typescript
-import type { NextConfig } from 'next'
+import type { NextConfig } from 'next';
 
 const securityHeaders = [
   { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-]
+];
 
 const nextConfig: NextConfig = {
   // Guardrail: if someone accidentally imports @codeindexer/core from web,
   // these prevent Turbopack from trying to bundle native N-API modules
   serverExternalPackages: [
-    'better-sqlite3', 'tree-sitter',
-    'tree-sitter-typescript', 'tree-sitter-javascript',
-    'tree-sitter-python', 'tree-sitter-rust',
-    'tree-sitter-go', 'tree-sitter-css',
+    'better-sqlite3',
+    'tree-sitter',
+    'tree-sitter-typescript',
+    'tree-sitter-javascript',
+    'tree-sitter-python',
+    'tree-sitter-rust',
+    'tree-sitter-go',
+    'tree-sitter-css',
   ],
   async headers() {
-    return [{ source: '/(.*)', headers: securityHeaders }]
+    return [{ source: '/(.*)', headers: securityHeaders }];
   },
-}
+};
 
-export default nextConfig
+export default nextConfig;
 ```
 
 Init shadcn and add components:
+
 ```bash
 cd apps/web
 npx shadcn@latest init --preset auFzGMc
@@ -817,6 +870,7 @@ pnpm dev:web
 ```
 
 ### Verify
+
 - [ ] `pnpm dev:web` starts without errors
 - [ ] `localhost:3000` shows the page
 - [ ] shadcn theme applied (inspect CSS custom properties)
@@ -824,6 +878,7 @@ pnpm dev:web
 - [ ] Security headers visible in browser devtools Network tab
 
 ### Commit
+
 ```
 feat: scaffold Next.js 16 app with shadcn
 ```
@@ -861,15 +916,16 @@ cd ../..
 ### Files to create
 
 **`apps/web/src/lib/auth.ts`** — server-side Better Auth config:
+
 ```typescript
-import { betterAuth } from 'better-auth'
-import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { createDb } from '@codeindexer/db/client'
+import { betterAuth } from 'better-auth';
+import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { createDb } from '@codeindexer/db/client';
 
-if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required')
-if (!process.env.BETTER_AUTH_SECRET) throw new Error('BETTER_AUTH_SECRET is required')
+if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
+if (!process.env.BETTER_AUTH_SECRET) throw new Error('BETTER_AUTH_SECRET is required');
 
-const db = createDb(process.env.DATABASE_URL)
+const db = createDb(process.env.DATABASE_URL);
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: 'pg' }),
@@ -885,7 +941,7 @@ export const auth = betterAuth({
 
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
-    updateAge: 60 * 60 * 24,      // refresh session age every 24h
+    updateAge: 60 * 60 * 24, // refresh session age every 24h
     cookieCache: {
       enabled: true,
       maxAge: 5 * 60, // 5 minutes — session data cached in signed cookie
@@ -908,33 +964,36 @@ export const auth = betterAuth({
       secure: process.env.NODE_ENV === 'production',
     },
   },
-})
+});
 
-export type Session = typeof auth.$Infer.Session
+export type Session = typeof auth.$Infer.Session;
 ```
 
 > **Fixes from review:**
+>
 > - Explicit env var assertions at startup
 > - `session.cookieCache` — avoids DB query on every `getSession()` call (massive perf win)
 > - `trustedOrigins` — prevents silent sign-in failures on Vercel preview deploys
 > - Explicit cookie attributes — httpOnly, sameSite, secure
 
 **`apps/web/src/lib/auth-client.ts`** — client-side:
+
 ```typescript
-import { createAuthClient } from 'better-auth/react'
+import { createAuthClient } from 'better-auth/react';
 
 export const authClient = createAuthClient({
   baseURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL ?? 'http://localhost:3000',
-})
+});
 ```
 
 **`apps/web/src/lib/dal.ts`** — Data Access Layer (new file, from Next.js docs):
+
 ```typescript
-import 'server-only'
-import { cache } from 'react'
-import { auth } from './auth'
-import { headers } from 'next/headers'
-import { redirect } from 'next/navigation'
+import 'server-only';
+import { cache } from 'react';
+import { auth } from './auth';
+import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 
 /**
  * Cached session verification — the single source of truth for auth state.
@@ -950,10 +1009,10 @@ import { redirect } from 'next/navigation'
 export const getSession = cache(async () => {
   const session = await auth.api.getSession({
     headers: await headers(),
-  })
-  if (!session) redirect('/login')
-  return session
-})
+  });
+  if (!session) redirect('/login');
+  return session;
+});
 
 /**
  * Same as getSession but returns null instead of redirecting.
@@ -963,16 +1022,17 @@ export const getSession = cache(async () => {
 export const getOptionalSession = cache(async () => {
   return auth.api.getSession({
     headers: await headers(),
-  })
-})
+  });
+});
 ```
 
 > **Why this matters:** Without `cache()`, if a layout AND a page AND a server action all call `auth.api.getSession()`, that's 3 DB queries for the same request. With `cache()`, it's 1 (or 0 if cookie cache is fresh).
 
 **`apps/web/src/proxy.ts`** — optimistic cookie redirect (Next.js 16):
+
 ```typescript
-import { NextRequest, NextResponse } from 'next/server'
-import { getSessionCookie } from 'better-auth/cookies'
+import { NextRequest, NextResponse } from 'next/server';
+import { getSessionCookie } from 'better-auth/cookies';
 
 /**
  * Next.js 16 proxy (replaces middleware.ts).
@@ -985,53 +1045,55 @@ import { getSessionCookie } from 'better-auth/cookies'
 export function proxy(request: NextRequest) {
   const session = getSessionCookie(request, {
     cookiePrefix: 'codeindexer',
-  })
-  const path = request.nextUrl.pathname
+  });
+  const path = request.nextUrl.pathname;
 
   // Redirect unauthenticated users away from protected routes
   if (path.startsWith('/dashboard') && !session) {
-    return NextResponse.redirect(new URL('/login', request.url))
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
   if (path.startsWith('/repo') && !session) {
-    return NextResponse.redirect(new URL('/login', request.url))
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
   // Redirect authenticated users away from login
   if (path === '/login' && session) {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
+    return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
-  return NextResponse.next()
+  return NextResponse.next();
 }
 
 export const config = {
   matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
-}
+};
 ```
 
 > **Why proxy.ts is included now (changed from "deferred"):** Better Auth docs recommend `getSessionCookie()` for optimistic redirects. Zero DB queries. Prevents flash of login page for authenticated users. The real validation is in the DAL.
 
 **`apps/web/src/app/api/auth/[...all]/route.ts`:**
-```typescript
-import { auth } from '@/lib/auth'
-import { toNextJsHandler } from 'better-auth/next-js'
 
-export const { POST, GET } = toNextJsHandler(auth)
+```typescript
+import { auth } from '@/lib/auth';
+import { toNextJsHandler } from 'better-auth/next-js';
+
+export const { POST, GET } = toNextJsHandler(auth);
 ```
 
 **`apps/web/src/components/providers.tsx`:**
-```tsx
-'use client'
 
-import { AuthUIProvider } from '@daveyplate/better-auth-ui'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import type { ReactNode } from 'react'
-import { authClient } from '@/lib/auth-client'
+```tsx
+'use client';
+
+import { AuthUIProvider } from '@daveyplate/better-auth-ui';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import type { ReactNode } from 'react';
+import { authClient } from '@/lib/auth-client';
 
 export function Providers({ children }: { children: ReactNode }) {
-  const router = useRouter()
+  const router = useRouter();
 
   return (
     <AuthUIProvider
@@ -1044,38 +1106,40 @@ export function Providers({ children }: { children: ReactNode }) {
     >
       {children}
     </AuthUIProvider>
-  )
+  );
 }
 ```
 
 **Update `apps/web/src/app/layout.tsx`** — wrap with Providers.
 
 **`apps/web/src/app/login/page.tsx`:**
+
 ```tsx
-import { AuthCard } from '@daveyplate/better-auth-ui'
+import { AuthCard } from '@daveyplate/better-auth-ui';
 
 export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center">
       <AuthCard />
     </div>
-  )
+  );
 }
 ```
 
 **`apps/web/src/app/dashboard/page.tsx`** — uses the DAL:
+
 ```tsx
-import { getSession } from '@/lib/dal'
+import { getSession } from '@/lib/dal';
 
 export default async function DashboardPage() {
-  const session = await getSession() // cached, redirects if not authenticated
+  const session = await getSession(); // cached, redirects if not authenticated
 
   return (
     <div className="p-8">
       <h1 className="text-2xl font-bold">Dashboard</h1>
       <p className="mt-2 text-muted-foreground">Welcome, {session.user.name}</p>
     </div>
-  )
+  );
 }
 ```
 
@@ -1093,6 +1157,7 @@ pnpm db:push
 ```
 
 ### Verify
+
 - [ ] `/login` renders GitHub sign-in button
 - [ ] OAuth redirect to GitHub works
 - [ ] Callback redirects to `/dashboard`
@@ -1105,6 +1170,7 @@ pnpm db:push
 - [ ] `pnpm dlx auth generate` output matches our schema
 
 ### Commit
+
 ```
 feat: add Better Auth with GitHub OAuth, DAL, and proxy.ts
 ```
@@ -1133,17 +1199,18 @@ feat: add Better Auth with GitHub OAuth, DAL, and proxy.ts
 **`apps/web/src/app/api/webhooks/github/route.ts`:**
 
 ```typescript
-import { createHmac, timingSafeEqual } from 'crypto'
-import { NextRequest, NextResponse } from 'next/server'
-import { z } from 'zod'
-import { createDb } from '@codeindexer/db/client'
-import { repos, account } from '@codeindexer/db/schema'
-import { eq, and } from 'drizzle-orm'
+import { createHmac, timingSafeEqual } from 'crypto';
+import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { createDb } from '@codeindexer/db/client';
+import { repos, account } from '@codeindexer/db/schema';
+import { eq, and } from 'drizzle-orm';
 
-if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required')
-if (!process.env.GITHUB_APP_WEBHOOK_SECRET) throw new Error('GITHUB_APP_WEBHOOK_SECRET is required')
+if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
+if (!process.env.GITHUB_APP_WEBHOOK_SECRET)
+  throw new Error('GITHUB_APP_WEBHOOK_SECRET is required');
 
-const db = createDb(process.env.DATABASE_URL)
+const db = createDb(process.env.DATABASE_URL);
 
 // ─── Zod schemas for webhook payloads ───
 // FIX from review: validate payloads instead of using `any` types
@@ -1153,7 +1220,7 @@ const repoSchema = z.object({
   full_name: z.string(),
   private: z.boolean().optional().default(false),
   default_branch: z.string().optional().default('main'),
-})
+});
 
 const installationEventSchema = z.object({
   action: z.string(),
@@ -1162,7 +1229,7 @@ const installationEventSchema = z.object({
     account: z.object({ id: z.number() }),
   }),
   repositories: z.array(repoSchema).optional(),
-})
+});
 
 const installationReposEventSchema = z.object({
   installation: z.object({
@@ -1171,140 +1238,100 @@ const installationReposEventSchema = z.object({
   }),
   repositories_added: z.array(repoSchema).optional(),
   repositories_removed: z.array(z.object({ id: z.number(), full_name: z.string() })).optional(),
-})
+});
 
 // ─── Webhook signature verification ───
 
 function verifySignature(body: string, signature: string, secret: string): boolean {
-  const expected = 'sha256=' + createHmac('sha256', secret).update(body).digest('hex')
-  const sigBuf = Buffer.from(signature)
-  const expBuf = Buffer.from(expected)
+  const expected = 'sha256=' + createHmac('sha256', secret).update(body).digest('hex');
+  const sigBuf = Buffer.from(signature);
+  const expBuf = Buffer.from(expected);
   // FIX from review: check lengths before timingSafeEqual to avoid leaking length info
-  if (sigBuf.length !== expBuf.length) return false
-  return timingSafeEqual(sigBuf, expBuf)
+  if (sigBuf.length !== expBuf.length) return false;
+  return timingSafeEqual(sigBuf, expBuf);
 }
 
 // ─── Route handler ───
 
 export async function POST(req: NextRequest) {
-  const body = await req.text()
-  const signature = req.headers.get('X-Hub-Signature-256')
-  const event = req.headers.get('X-GitHub-Event')
+  const body = await req.text();
+  const signature = req.headers.get('X-Hub-Signature-256');
+  const event = req.headers.get('X-GitHub-Event');
 
   if (!signature || !verifySignature(body, signature, process.env.GITHUB_APP_WEBHOOK_SECRET!)) {
-    return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+    return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
   }
 
   // Respond 200 immediately — process in background
   // Note: In production on Vercel, use waitUntil() from @vercel/functions
   // to continue processing after the response is sent (GitHub has 10s timeout)
 
-  const payload = JSON.parse(body)
+  const payload = JSON.parse(body);
 
   try {
     switch (event) {
       case 'installation':
-        await handleInstallation(payload)
-        break
+        await handleInstallation(payload);
+        break;
       case 'installation_repositories':
-        await handleInstallationRepositories(payload)
-        break
+        await handleInstallationRepositories(payload);
+        break;
       case 'push':
         // Phase 2: will trigger sync-repo via Trigger.dev
-        break
+        break;
     }
   } catch (error) {
-    console.error(`Webhook ${event} processing failed:`, error)
+    console.error(`Webhook ${event} processing failed:`, error);
     // Still return 200 — we don't want GitHub to retry on our app errors
   }
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true });
 }
 
 // ─── Handlers ───
 
 async function handleInstallation(raw: unknown) {
-  const payload = installationEventSchema.parse(raw)
+  const payload = installationEventSchema.parse(raw);
 
   if (payload.action === 'deleted') {
     // Mark repos as disconnected — full cleanup in Phase 2
     // For now, just log. Repos stay in DB but webhook handler won't re-create them.
-    console.log(`GitHub App uninstalled: installation ${payload.installation.id}`)
-    return
+    console.log(`GitHub App uninstalled: installation ${payload.installation.id}`);
+    return;
   }
 
-  if (payload.action !== 'created') return
+  if (payload.action !== 'created') return;
 
-  const { installation, repositories } = payload
-  if (!repositories?.length) return
+  const { installation, repositories } = payload;
+  if (!repositories?.length) return;
 
-  const githubAccountId = String(installation.account.id)
+  const githubAccountId = String(installation.account.id);
   const userAccount = await db.query.account.findFirst({
-    where: and(
-      eq(account.providerId, 'github'),
-      eq(account.accountId, githubAccountId),
-    ),
-  })
+    where: and(eq(account.providerId, 'github'), eq(account.accountId, githubAccountId)),
+  });
 
   if (!userAccount) {
     // Edge case: webhook arrived before user completed OAuth.
     // Spec Section 9.1 acknowledges this. Log for debugging.
-    console.warn(`No user found for GitHub account ${githubAccountId} — webhook dropped`)
-    return
+    console.warn(`No user found for GitHub account ${githubAccountId} — webhook dropped`);
+    return;
   }
 
   for (const repo of repositories) {
-    await db.insert(repos).values({
-      userId: userAccount.userId,
-      githubId: BigInt(repo.id),
-      fullName: repo.full_name,
-      // FIX from review: use actual default branch from payload
-      defaultBranch: repo.default_branch ?? 'main',
-      installationId: BigInt(installation.id),
-      isPrivate: repo.private ?? false,
-      status: 'pending',
-    })
-    // FIX from review: onConflictDoUpdate instead of DoNothing —
-    // refreshes installationId on re-install (GitHub can rotate these)
-    .onConflictDoUpdate({
-      target: [repos.userId, repos.githubId],
-      set: {
-        installationId: BigInt(installation.id),
-        defaultBranch: repo.default_branch ?? 'main',
-        isPrivate: repo.private ?? false,
-        status: 'pending',
-        updatedAt: new Date(),
-      },
-    })
-  }
-}
-
-async function handleInstallationRepositories(raw: unknown) {
-  const payload = installationReposEventSchema.parse(raw)
-  const { installation, repositories_added, repositories_removed } = payload
-
-  // Handle added repos
-  if (repositories_added?.length) {
-    const githubAccountId = String(installation.account.id)
-    const userAccount = await db.query.account.findFirst({
-      where: and(
-        eq(account.providerId, 'github'),
-        eq(account.accountId, githubAccountId),
-      ),
-    })
-
-    if (!userAccount) return
-
-    for (const repo of repositories_added) {
-      await db.insert(repos).values({
+    await db
+      .insert(repos)
+      .values({
         userId: userAccount.userId,
         githubId: BigInt(repo.id),
         fullName: repo.full_name,
+        // FIX from review: use actual default branch from payload
         defaultBranch: repo.default_branch ?? 'main',
         installationId: BigInt(installation.id),
         isPrivate: repo.private ?? false,
         status: 'pending',
       })
+      // FIX from review: onConflictDoUpdate instead of DoNothing —
+      // refreshes installationId on re-install (GitHub can rotate these)
       .onConflictDoUpdate({
         target: [repos.userId, repos.githubId],
         set: {
@@ -1314,7 +1341,45 @@ async function handleInstallationRepositories(raw: unknown) {
           status: 'pending',
           updatedAt: new Date(),
         },
-      })
+      });
+  }
+}
+
+async function handleInstallationRepositories(raw: unknown) {
+  const payload = installationReposEventSchema.parse(raw);
+  const { installation, repositories_added, repositories_removed } = payload;
+
+  // Handle added repos
+  if (repositories_added?.length) {
+    const githubAccountId = String(installation.account.id);
+    const userAccount = await db.query.account.findFirst({
+      where: and(eq(account.providerId, 'github'), eq(account.accountId, githubAccountId)),
+    });
+
+    if (!userAccount) return;
+
+    for (const repo of repositories_added) {
+      await db
+        .insert(repos)
+        .values({
+          userId: userAccount.userId,
+          githubId: BigInt(repo.id),
+          fullName: repo.full_name,
+          defaultBranch: repo.default_branch ?? 'main',
+          installationId: BigInt(installation.id),
+          isPrivate: repo.private ?? false,
+          status: 'pending',
+        })
+        .onConflictDoUpdate({
+          target: [repos.userId, repos.githubId],
+          set: {
+            installationId: BigInt(installation.id),
+            defaultBranch: repo.default_branch ?? 'main',
+            isPrivate: repo.private ?? false,
+            status: 'pending',
+            updatedAt: new Date(),
+          },
+        });
     }
   }
 
@@ -1322,13 +1387,14 @@ async function handleInstallationRepositories(raw: unknown) {
   if (repositories_removed?.length) {
     for (const repo of repositories_removed) {
       // Phase 2: trigger cleanup task. For now, mark as deleting.
-      console.log(`Repo removed from installation: ${repo.full_name}`)
+      console.log(`Repo removed from installation: ${repo.full_name}`);
     }
   }
 }
 ```
 
 > **Fixes from review:**
+>
 > - Zod validation on all webhook payloads — no more `any` types
 > - Length-checked `timingSafeEqual` — prevents timing leak on length mismatch
 > - `onConflictDoUpdate` instead of `DoNothing` — refreshes `installationId` on re-install
@@ -1341,6 +1407,7 @@ async function handleInstallationRepositories(raw: unknown) {
 > - Env var assertions at module level
 
 ### Verify
+
 - [ ] Webhook arrives (check smee dashboard)
 - [ ] Invalid signatures rejected (401)
 - [ ] Installation creates repo rows in Postgres
@@ -1352,6 +1419,7 @@ async function handleInstallationRepositories(raw: unknown) {
 - [ ] Malformed payloads are caught by Zod (check error handling)
 
 ### Commit
+
 ```
 feat: add GitHub App webhook handler for repo installation
 ```
@@ -1374,36 +1442,38 @@ feat: add GitHub App webhook handler for repo installation
 ### DB singleton
 
 `apps/web/src/lib/db.ts`:
-```typescript
-import { createDb } from '@codeindexer/db/client'
 
-if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required')
+```typescript
+import { createDb } from '@codeindexer/db/client';
+
+if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
 
 const globalForDb = globalThis as unknown as {
-  db: ReturnType<typeof createDb> | undefined
-}
+  db: ReturnType<typeof createDb> | undefined;
+};
 
-export const db = globalForDb.db ?? createDb(process.env.DATABASE_URL)
+export const db = globalForDb.db ?? createDb(process.env.DATABASE_URL);
 
-if (process.env.NODE_ENV !== 'production') globalForDb.db = db
+if (process.env.NODE_ENV !== 'production') globalForDb.db = db;
 ```
 
 ### Dashboard page
 
 Uses the DAL for auth, DB singleton for data:
+
 ```typescript
-import { getSession } from '@/lib/dal'
-import { db } from '@/lib/db'
-import { repos } from '@codeindexer/db/schema'
-import { eq } from 'drizzle-orm'
+import { getSession } from '@/lib/dal';
+import { db } from '@/lib/db';
+import { repos } from '@codeindexer/db/schema';
+import { eq } from 'drizzle-orm';
 
 export default async function DashboardPage() {
-  const session = await getSession() // cached, one DB query max
+  const session = await getSession(); // cached, one DB query max
 
   const userRepos = await db.query.repos.findMany({
     where: eq(repos.userId, session.user.id),
     orderBy: (repos, { desc }) => [desc(repos.createdAt)],
-  })
+  });
 
   // Render <RepoList> if repos exist, <EmptyState> if not
 }
@@ -1411,20 +1481,21 @@ export default async function DashboardPage() {
 
 ### Status badges
 
-| Status | Color | Label |
-|--------|-------|-------|
-| `pending` | yellow | Pending |
-| `cloning` | blue | Cloning... |
-| `indexing` | blue | Indexing... |
-| `ready` | green | Ready |
-| `error` | red | Error |
-| `stale` | gray | Stale |
+| Status     | Color  | Label       |
+| ---------- | ------ | ----------- |
+| `pending`  | yellow | Pending     |
+| `cloning`  | blue   | Cloning...  |
+| `indexing` | blue   | Indexing... |
+| `ready`    | green  | Ready       |
+| `error`    | red    | Error       |
+| `stale`    | gray   | Stale       |
 
 ### "Add Repository" CTA
 
 Links to: `https://github.com/apps/codeindexer-dev/installations/new`
 
 ### Verify
+
 - [ ] Empty state renders when no repos
 - [ ] "Add Repository" links to GitHub App install
 - [ ] After installing, repos appear on dashboard (refresh page)
@@ -1435,6 +1506,7 @@ Links to: `https://github.com/apps/codeindexer-dev/installations/new`
 - [ ] Unauthenticated → redirected to `/login` (proxy.ts, no flash)
 
 ### Commit
+
 ```
 feat: add dashboard with repo list and empty state
 ```
@@ -1469,6 +1541,7 @@ jobs:
 ```
 
 ### Commit
+
 ```
 ci: update GitHub Actions for pnpm + Turborepo
 ```
@@ -1477,44 +1550,44 @@ ci: update GitHub Actions for pnpm + Turborepo
 
 ## What We Explicitly Deferred
 
-| Deferred | Why | When |
-|----------|-----|------|
-| `packages/config` (shared env) | Only one service exists. Extract when second needs shared env. | Phase 2/3 |
-| `apps/api` (Hono) | No search or chat yet. | Phase 3 |
-| `apps/trigger` (Trigger.dev) | No indexing pipeline yet. | Phase 2 |
-| JWT plugin for Better Auth | Only needed for cross-origin auth (browser → Hono). | Phase 3 |
-| Email (Resend) | No users to email. | Phase 5 |
-| Sentry / OTEL | Add Sentry early Phase 3. | Phase 3/5 |
-| Webhook replay protection | `X-GitHub-Delivery` dedup — OK for Phase 1 with `onConflictDoUpdate`. | Phase 2 |
-| `neon-http` → WebSocket driver | HTTP driver is fine for Next.js. Workers need connection reuse. | Phase 2 |
-| `installation.deleted` cleanup | Logged only. Full cleanup needs Trigger.dev tasks. | Phase 2 |
-| Turbo remote caching | Free with Vercel. Add when deploying. | First deploy |
+| Deferred                       | Why                                                                   | When         |
+| ------------------------------ | --------------------------------------------------------------------- | ------------ |
+| `packages/config` (shared env) | Only one service exists. Extract when second needs shared env.        | Phase 2/3    |
+| `apps/api` (Hono)              | No search or chat yet.                                                | Phase 3      |
+| `apps/trigger` (Trigger.dev)   | No indexing pipeline yet.                                             | Phase 2      |
+| JWT plugin for Better Auth     | Only needed for cross-origin auth (browser → Hono).                   | Phase 3      |
+| Email (Resend)                 | No users to email.                                                    | Phase 5      |
+| Sentry / OTEL                  | Add Sentry early Phase 3.                                             | Phase 3/5    |
+| Webhook replay protection      | `X-GitHub-Delivery` dedup — OK for Phase 1 with `onConflictDoUpdate`. | Phase 2      |
+| `neon-http` → WebSocket driver | HTTP driver is fine for Next.js. Workers need connection reuse.       | Phase 2      |
+| `installation.deleted` cleanup | Logged only. Full cleanup needs Trigger.dev tasks.                    | Phase 2      |
+| Turbo remote caching           | Free with Vercel. Add when deploying.                                 | First deploy |
 
 ---
 
 ## Review Findings Applied
 
-| # | Finding | Fix applied |
-|---|---------|-------------|
-| 1 | `bigint` mode 'number' — silent data corruption | Changed to `mode: 'bigint'` + `BigInt()` wrappers |
-| 2 | `onConflictDoNothing` — stale installationId | Changed to `onConflictDoUpdate` |
-| 3 | `defaultBranch` hardcoded to 'main' | Uses `repo.default_branch` from payload |
-| 4 | `timingSafeEqual` without length check | Added explicit length comparison |
-| 5 | No Zod validation on webhook payload | Added Zod schemas for all events |
-| 6 | `dotenv/config` can't find root `.env` | Explicit path in `drizzle.config.ts` |
-| 7 | Missing `trustedOrigins` | Added to Better Auth config |
-| 8 | `apps/web` must not import `@codeindexer/core` | Documented as hard constraint + `serverExternalPackages` guardrail |
-| 9 | Missing DAL pattern | Added `lib/dal.ts` with `cache()` wrapper |
-| 10 | Missing `proxy.ts` for optimistic redirects | Added using `getSessionCookie` from Better Auth |
-| 11 | Missing cookie cache | Enabled `session.cookieCache` (5 min TTL) |
-| 12 | Missing `is_private` column | Added to repos table |
-| 13 | `.npmrc` missing native module hoist | Added `public-hoist-pattern[]=*.node` |
-| 14 | Neon pooled connection | Documented: use `-pooler` hostname |
-| 15 | No env var assertions | Added `throw new Error()` at module level |
-| 16 | Cookie security defaults implicit | Explicit `httpOnly`, `sameSite`, `secure` |
-| 17 | `globalDependencies: [".env"]` | Replaced with per-task `env` arrays |
-| 18 | Missing `@types/node` in packages/db | Added to devDependencies |
-| 19 | CSP + security headers | Added to `next.config.ts` |
-| 20 | `.env.example` never defined | Created in Step 1 |
-| 21 | PEM format in .env | Documented actual newlines, not `\n` escapes |
-| 22 | `installation.deleted` not handled | Added handler (logs, defers cleanup) |
+| #   | Finding                                         | Fix applied                                                        |
+| --- | ----------------------------------------------- | ------------------------------------------------------------------ |
+| 1   | `bigint` mode 'number' — silent data corruption | Changed to `mode: 'bigint'` + `BigInt()` wrappers                  |
+| 2   | `onConflictDoNothing` — stale installationId    | Changed to `onConflictDoUpdate`                                    |
+| 3   | `defaultBranch` hardcoded to 'main'             | Uses `repo.default_branch` from payload                            |
+| 4   | `timingSafeEqual` without length check          | Added explicit length comparison                                   |
+| 5   | No Zod validation on webhook payload            | Added Zod schemas for all events                                   |
+| 6   | `dotenv/config` can't find root `.env`          | Explicit path in `drizzle.config.ts`                               |
+| 7   | Missing `trustedOrigins`                        | Added to Better Auth config                                        |
+| 8   | `apps/web` must not import `@codeindexer/core`  | Documented as hard constraint + `serverExternalPackages` guardrail |
+| 9   | Missing DAL pattern                             | Added `lib/dal.ts` with `cache()` wrapper                          |
+| 10  | Missing `proxy.ts` for optimistic redirects     | Added using `getSessionCookie` from Better Auth                    |
+| 11  | Missing cookie cache                            | Enabled `session.cookieCache` (5 min TTL)                          |
+| 12  | Missing `is_private` column                     | Added to repos table                                               |
+| 13  | `.npmrc` missing native module hoist            | Added `public-hoist-pattern[]=*.node`                              |
+| 14  | Neon pooled connection                          | Documented: use `-pooler` hostname                                 |
+| 15  | No env var assertions                           | Added `throw new Error()` at module level                          |
+| 16  | Cookie security defaults implicit               | Explicit `httpOnly`, `sameSite`, `secure`                          |
+| 17  | `globalDependencies: [".env"]`                  | Replaced with per-task `env` arrays                                |
+| 18  | Missing `@types/node` in packages/db            | Added to devDependencies                                           |
+| 19  | CSP + security headers                          | Added to `next.config.ts`                                          |
+| 20  | `.env.example` never defined                    | Created in Step 1                                                  |
+| 21  | PEM format in .env                              | Documented actual newlines, not `\n` escapes                       |
+| 22  | `installation.deleted` not handled              | Added handler (logs, defers cleanup)                               |

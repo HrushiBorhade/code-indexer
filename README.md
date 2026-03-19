@@ -39,17 +39,17 @@ Codebase → Walk → Hash → Chunk → Embed → Store → Search
 
 ## Tech stack
 
-| Component | Technology |
-|---|---|
-| Runtime | Node.js |
-| Language | TypeScript |
-| CLI | commander |
-| Parsing | tree-sitter (native N-API) |
-| Embeddings | OpenAI / Voyage AI (configurable) |
-| Vector DB | Qdrant Cloud |
-| Local cache | better-sqlite3 |
-| Text search | ripgrep |
-| File discovery | git ls-files + fast-glob |
+| Component      | Technology                        |
+| -------------- | --------------------------------- |
+| Runtime        | Node.js                           |
+| Language       | TypeScript                        |
+| CLI            | commander                         |
+| Parsing        | tree-sitter (native N-API)        |
+| Embeddings     | OpenAI / Voyage AI (configurable) |
+| Vector DB      | Qdrant Cloud                      |
+| Local cache    | better-sqlite3                    |
+| Text search    | ripgrep                           |
+| File discovery | git ls-files + fast-glob          |
 
 ## Supported languages
 
@@ -101,11 +101,11 @@ npx tsx src/index.ts --version
 
 **Search modes:**
 
-| Mode | What it does |
-|------|-------------|
+| Mode               | What it does                               |
+| ------------------ | ------------------------------------------ |
 | `hybrid` (default) | Semantic + ripgrep, merged with RRF fusion |
-| `semantic` | Vector similarity search only |
-| `grep` | Exact text match via ripgrep only |
+| `semantic`         | Vector similarity search only              |
+| `grep`             | Exact text match via ripgrep only          |
 
 ### Development
 
@@ -126,14 +126,14 @@ npm run test:coverage  # Coverage report
 
 Built in six phases, each teaching one concept:
 
-| Phase | Concept | Files |
-|---|---|---|
-| 1 | File walking & AST chunking | `languages.ts`, `walker.ts`, `chunker/` |
-| 2 | Embeddings | `embedder.ts` (configurable OpenAI/Voyage) |
-| 3 | Vector store + SQLite cache | `store.ts`, `db.ts`, `hash.ts`, `shutdown.ts` |
-| 4 | Semantic search | `search.ts` |
-| 5 | Hybrid search (semantic + ripgrep) | `grep.ts`, `merge.ts` |
-| 6 | Incremental sync (Merkle tree) | `sync.ts` |
+| Phase | Concept                            | Files                                         |
+| ----- | ---------------------------------- | --------------------------------------------- |
+| 1     | File walking & AST chunking        | `languages.ts`, `walker.ts`, `chunker/`       |
+| 2     | Embeddings                         | `embedder.ts` (configurable OpenAI/Voyage)    |
+| 3     | Vector store + SQLite cache        | `store.ts`, `db.ts`, `hash.ts`, `shutdown.ts` |
+| 4     | Semantic search                    | `search.ts`                                   |
+| 5     | Hybrid search (semantic + ripgrep) | `grep.ts`, `merge.ts`                         |
+| 6     | Incremental sync (Merkle tree)     | `sync.ts`                                     |
 
 ### Project structure
 
@@ -171,17 +171,17 @@ src/
 
 ### Why these design decisions?
 
-| Decision | Rationale |
-|---|---|
-| AST chunking over line splitting | Line splits cut functions in half. AST boundaries preserve semantic units. |
-| Code never stored in vector DB | Only pointers (file + line range). Code read from disk at query time. Same privacy model as Cursor. |
-| git ls-files over manual ignore lists | `.gitignore` already defines what matters. Don't reinvent it. |
-| tree-sitter native over WASM | Native N-API works on Node darwin-arm64. Simpler API, sync init. Same approach Cursor uses. |
-| commander over hand-rolled args | Auto `--help`, `--version`, flag validation, short aliases. Used by Vite, Prisma, tRPC. |
-| Modular chunker directory | 8 strategies in one file = 400+ lines. Each file < 80 lines. Adding a language = one new file. |
-| Hybrid search over pure semantic | Semantic misses exact symbol names. Ripgrep misses meaning. Combined improves accuracy ~12.5% (per Cursor). |
-| Merkle tree for sync | One file change re-indexes 3 chunks, not 3000. Same principle as Git's object model. |
-| RRF for rank fusion | Merges two ranked lists without score normalization. Simple, proven, standard. |
+| Decision                              | Rationale                                                                                                   |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| AST chunking over line splitting      | Line splits cut functions in half. AST boundaries preserve semantic units.                                  |
+| Code never stored in vector DB        | Only pointers (file + line range). Code read from disk at query time. Same privacy model as Cursor.         |
+| git ls-files over manual ignore lists | `.gitignore` already defines what matters. Don't reinvent it.                                               |
+| tree-sitter native over WASM          | Native N-API works on Node darwin-arm64. Simpler API, sync init. Same approach Cursor uses.                 |
+| commander over hand-rolled args       | Auto `--help`, `--version`, flag validation, short aliases. Used by Vite, Prisma, tRPC.                     |
+| Modular chunker directory             | 8 strategies in one file = 400+ lines. Each file < 80 lines. Adding a language = one new file.              |
+| Hybrid search over pure semantic      | Semantic misses exact symbol names. Ripgrep misses meaning. Combined improves accuracy ~12.5% (per Cursor). |
+| Merkle tree for sync                  | One file change re-indexes 3 chunks, not 3000. Same principle as Git's object model.                        |
+| RRF for rank fusion                   | Merges two ranked lists without score normalization. Simple, proven, standard.                              |
 
 ## Roadmap
 
