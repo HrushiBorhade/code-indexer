@@ -9,18 +9,6 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  // Guardrail: if someone accidentally imports @codeindexer/core from web,
-  // these prevent Turbopack from trying to bundle native N-API modules
-  serverExternalPackages: [
-    'better-sqlite3',
-    'tree-sitter',
-    'tree-sitter-typescript',
-    'tree-sitter-javascript',
-    'tree-sitter-python',
-    'tree-sitter-rust',
-    'tree-sitter-go',
-    'tree-sitter-css',
-  ],
   async headers() {
     return [{ source: '/(.*)', headers: securityHeaders }];
   },
