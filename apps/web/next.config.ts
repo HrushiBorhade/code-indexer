@@ -9,9 +9,6 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  turbopack: {
-    root: '../..',
-  },
   // Guardrail: if someone accidentally imports @codeindexer/core from web,
   // these prevent Turbopack from trying to bundle native N-API modules
   serverExternalPackages: [
