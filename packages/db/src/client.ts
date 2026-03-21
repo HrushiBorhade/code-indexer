@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/neon-http';
 import { neon } from '@neondatabase/serverless';
-import * as schema from './schema.js';
-import * as relations from './relations.js';
+import * as schema from './schema';
+import * as relations from './relations';
 
 export function createDb(databaseUrl: string) {
   if (!databaseUrl) {
