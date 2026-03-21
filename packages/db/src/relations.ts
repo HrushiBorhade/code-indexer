@@ -10,7 +10,7 @@ import {
   conversations,
   messages,
   indexJobs,
-} from './schema.js';
+} from './schema';
 
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
