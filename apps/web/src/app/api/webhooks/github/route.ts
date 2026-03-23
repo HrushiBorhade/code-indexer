@@ -86,29 +86,32 @@ async function upsertRepos(
   installationId: number,
   repositories: z.infer<typeof repoSchema>[],
 ) {
-  for (const repo of repositories) {
-    await db
-      .insert(repos)
-      .values({
-        userId,
-        githubId: BigInt(repo.id),
-        fullName: repo.full_name,
-        defaultBranch: repo.default_branch,
-        installationId: BigInt(installationId),
-        isPrivate: repo.private,
-        status: 'pending',
-      })
-      .onConflictDoUpdate({
-        target: [repos.userId, repos.githubId],
-        set: {
-          installationId: BigInt(installationId),
+  // Batch upserts with Promise.all — avoids sequential HTTP round-trips to Neon
+  await Promise.all(
+    repositories.map((repo) =>
+      db
+        .insert(repos)
+        .values({
+          userId,
+          githubId: BigInt(repo.id),
+          fullName: repo.full_name,
           defaultBranch: repo.default_branch,
+          installationId: BigInt(installationId),
           isPrivate: repo.private,
           status: 'pending',
-          updatedAt: new Date(),
-        },
-      });
-  }
+        })
+        .onConflictDoUpdate({
+          target: [repos.userId, repos.githubId],
+          set: {
+            installationId: BigInt(installationId),
+            defaultBranch: repo.default_branch,
+            isPrivate: repo.private,
+            status: 'pending',
+            updatedAt: new Date(),
+          },
+        }),
+    ),
+  );
 }
 
 async function findUserByGitHubAccountId(githubAccountId: string) {
