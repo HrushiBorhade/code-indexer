@@ -1,4 +1,6 @@
-import { House, MagnifyingGlass, GithubLogo, Gear } from '@phosphor-icons/react/dist/ssr';
+'use client';
+
+import { House, MagnifyingGlass, GithubLogo, Gear } from '@phosphor-icons/react';
 import Link from 'next/link';
 import {
   Sidebar,

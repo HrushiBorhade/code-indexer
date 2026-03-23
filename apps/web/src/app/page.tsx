@@ -1,4 +1,11 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
+
+export const metadata: Metadata = {
+  title: 'CodeIndexer — Semantic Code Search Engine',
+  description:
+    'Search your codebase by meaning. Connect GitHub repos, index with AST-aware chunking, search with natural language.',
+};
 import {
   MagnifyingGlass,
   Lightning,
