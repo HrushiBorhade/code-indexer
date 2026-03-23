@@ -1,11 +1,5 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-
-export const metadata: Metadata = {
-  title: 'CodeIndexer — Semantic Code Search Engine',
-  description:
-    'Search your codebase by meaning. Connect GitHub repos, index with AST-aware chunking, search with natural language.',
-};
 import {
   MagnifyingGlass,
   Lightning,
@@ -16,6 +10,20 @@ import {
 } from '@phosphor-icons/react/dist/ssr';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import {
+  HeroBadge,
+  HeroTitle,
+  HeroDescription,
+  HeroActions,
+  HeroTerminal,
+  FeatureCard,
+} from '@/components/landing/hero-animations';
+
+export const metadata: Metadata = {
+  title: 'CodeIndexer — Semantic Code Search Engine',
+  description:
+    'Search your codebase by meaning. Connect GitHub repos, index with AST-aware chunking, search with natural language.',
+};
 
 const features = [
   {
@@ -64,19 +72,24 @@ export default function Home() {
 
       {/* Hero */}
       <section className="flex flex-1 flex-col items-center justify-center px-6 py-24 text-center">
-        <Badge variant="secondary" className="mb-6 font-mono">
-          Phase 1 — Open Source
-        </Badge>
-        <h1 className="max-w-2xl text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
+        <HeroBadge>
+          <Badge variant="secondary" className="font-mono">
+            Phase 1 — Open Source
+          </Badge>
+        </HeroBadge>
+
+        <HeroTitle>
           Search your codebase
           <br />
           <span className="text-muted-foreground">by meaning</span>
-        </h1>
-        <p className="mt-4 max-w-lg text-base text-muted-foreground sm:text-lg">
+        </HeroTitle>
+
+        <HeroDescription>
           Semantic code search engine that understands your code. Connect your GitHub repos, index
           with AST-aware chunking, search with natural language.
-        </p>
-        <div className="mt-8 flex items-center gap-3">
+        </HeroDescription>
+
+        <HeroActions>
           <Button size="lg" asChild>
             <Link href="/login">
               Get Started
@@ -93,10 +106,9 @@ export default function Home() {
               View Source
             </a>
           </Button>
-        </div>
+        </HeroActions>
 
-        {/* Terminal preview */}
-        <div className="mt-16 w-full max-w-2xl">
+        <HeroTerminal>
           <div className="overflow-hidden rounded-lg border bg-card shadow-2xl">
             <div className="flex items-center gap-1.5 border-b px-4 py-2.5">
               <div className="size-2.5 rounded-full bg-red-500/60" />
@@ -110,8 +122,8 @@ export default function Home() {
                 middleware&quot;
               </div>
               <div className="mt-3 text-muted-foreground">
-                Found <span className="text-foreground font-medium">8 results</span> in{' '}
-                <span className="text-foreground font-medium">247ms</span>
+                Found <span className="font-medium text-foreground">8 results</span> in{' '}
+                <span className="font-medium text-foreground">247ms</span>
               </div>
               <div className="mt-2 space-y-1">
                 <div>
@@ -135,7 +147,7 @@ export default function Home() {
               </div>
             </div>
           </div>
-        </div>
+        </HeroTerminal>
       </section>
 
       {/* Features */}
@@ -148,17 +160,16 @@ export default function Home() {
             Every piece of the pipeline is designed for code, not generic text.
           </p>
           <div className="mt-12 grid gap-6 sm:grid-cols-2">
-            {features.map((feature) => (
-              <div
-                key={feature.title}
-                className="group rounded-lg border p-6 transition-colors hover:border-foreground/20 hover:bg-muted/50"
-              >
-                <div className="flex size-9 items-center justify-center rounded-md border bg-background transition-colors group-hover:border-foreground/20">
-                  <feature.icon className="size-4" weight="bold" />
+            {features.map((feature, i) => (
+              <FeatureCard key={feature.title} index={i}>
+                <div className="group rounded-lg border p-6 transition-colors hover:border-foreground/20 hover:bg-muted/50">
+                  <div className="flex size-9 items-center justify-center rounded-md border bg-background transition-colors group-hover:border-foreground/20">
+                    <feature.icon className="size-4" weight="bold" />
+                  </div>
+                  <h3 className="mt-3 font-semibold">{feature.title}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{feature.description}</p>
                 </div>
-                <h3 className="mt-3 font-semibold">{feature.title}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">{feature.description}</p>
-              </div>
+              </FeatureCard>
             ))}
           </div>
         </div>
