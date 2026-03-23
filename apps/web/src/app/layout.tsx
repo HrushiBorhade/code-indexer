@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { Geist, JetBrains_Mono } from 'next/font/google';
 import { cn } from '@/lib/utils';
 import { Providers } from '@/components/providers';
-import { ThemeToggle } from '@/components/theme-toggle';
 import './globals.css';
 
 const geistSans = Geist({
@@ -32,10 +31,7 @@ export default function RootLayout({
       className={cn('h-full antialiased', geistSans.variable, jetbrainsMono.variable)}
     >
       <body className="flex min-h-full flex-col">
-        <Providers>
-          <ThemeToggle />
-          {children}
-        </Providers>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
