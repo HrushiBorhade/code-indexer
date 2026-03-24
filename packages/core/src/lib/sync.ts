@@ -2,12 +2,12 @@ import path from 'node:path';
 import { hashFile, hashString } from './hash.ts';
 import {
   getDb,
-  getFileHash,
-  setFileHash,
-  getAllFileHashes,
-  getDirHash,
-  setDirHash,
-  clearDirHashes,
+  getFileHash as dbGetFileHash,
+  setFileHash as dbSetFileHash,
+  getAllFileHashes as dbGetAllFileHashes,
+  getDirHash as dbGetDirHash,
+  setDirHash as dbSetDirHash,
+  clearDirHashes as dbClearDirHashes,
 } from './db.ts';
 import { createLogger } from '../utils/logger.ts';
 
@@ -15,6 +15,94 @@ const log = createLogger('sync');
 
 const ROOT_KEY = '__root__';
 const HASH_CONCURRENCY = 32;
+
+// ---------------------------------------------------------------------------
+// SyncStorage interface — abstracts DB I/O so Merkle logic works with any backend
+// ---------------------------------------------------------------------------
+
+interface SyncStorage {
+  /** Get the stored SHA-256 hash for a file, or null if not stored. */
+  getFileHash(filePath: string): Promise<string | null>;
+
+  /** Persist a file's SHA-256 hash. */
+  setFileHash(filePath: string, hash: string): Promise<void>;
+
+  /** Get the stored Merkle hash for a directory, or null if not stored. */
+  getDirHash(dirPath: string): Promise<string | null>;
+
+  /** Persist a directory's Merkle hash. */
+  setDirHash(dirPath: string, hash: string): Promise<void>;
+
+  /** Delete all stored directory hashes. */
+  clearDirHashes(): Promise<void>;
+
+  /** Get all stored file paths and their hashes. */
+  getAllFileHashes(): Promise<Map<string, string>>;
+
+  /**
+   * Run a set of operations atomically. If the backend supports transactions,
+   * all writes inside `fn` should be committed together or rolled back.
+   * Backends without transaction support can simply run `fn` sequentially.
+   */
+  transaction<T>(fn: () => Promise<T>): Promise<T>;
+}
+
+// ---------------------------------------------------------------------------
+// SqliteSyncStorage — wraps the existing better-sqlite3 calls
+// ---------------------------------------------------------------------------
+
+class SqliteSyncStorage implements SyncStorage {
+  async getFileHash(filePath: string): Promise<string | null> {
+    const row = dbGetFileHash(filePath);
+    return row ? row.sha256 : null;
+  }
+
+  async setFileHash(filePath: string, hash: string): Promise<void> {
+    dbSetFileHash(filePath, hash);
+  }
+
+  async getDirHash(dirPath: string): Promise<string | null> {
+    const row = dbGetDirHash(dirPath);
+    return row ? row.merkle_hash : null;
+  }
+
+  async setDirHash(dirPath: string, hash: string): Promise<void> {
+    dbSetDirHash(dirPath, hash);
+  }
+
+  async clearDirHashes(): Promise<void> {
+    dbClearDirHashes();
+  }
+
+  async getAllFileHashes(): Promise<Map<string, string>> {
+    const rows = dbGetAllFileHashes();
+    const map = new Map<string, string>();
+    for (const row of rows) {
+      map.set(row.file_path, row.sha256);
+    }
+    return map;
+  }
+
+  async transaction<T>(fn: () => Promise<T>): Promise<T> {
+    // better-sqlite3 transactions are synchronous. Since SqliteSyncStorage
+    // methods wrap sync calls in async, all awaits resolve in the same
+    // microtask. We use manual BEGIN/COMMIT to support the async fn.
+    const db = getDb();
+    db.exec('BEGIN');
+    try {
+      const result = await fn();
+      db.exec('COMMIT');
+      return result;
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pure Merkle computation — NO storage dependency
+// ---------------------------------------------------------------------------
 
 interface SyncResult {
   added: string[];
@@ -43,6 +131,7 @@ function isImmediateChild(parent: string, candidate: string): boolean {
 
 /**
  * Build a Merkle tree from files and their hashes.
+ * Pure function — no storage dependency.
  */
 function buildMerkleTree(
   files: string[],
@@ -127,15 +216,27 @@ async function hashFiles(files: string[]): Promise<Map<string, string>> {
   return fileHashMap;
 }
 
+// ---------------------------------------------------------------------------
+// Core sync operations — accept SyncStorage parameter
+// ---------------------------------------------------------------------------
+
+/** Default storage instance used when no storage is provided. */
+const defaultStorage = new SqliteSyncStorage();
+
 /**
  * Compute which files changed since last sync using Merkle tree diff.
+ * Accepts an optional SyncStorage for the backend; defaults to SqliteSyncStorage.
  */
-async function computeChanges(files: string[], rootDir: string): Promise<SyncResult> {
+async function computeChanges(
+  files: string[],
+  rootDir: string,
+  storage: SyncStorage = defaultStorage,
+): Promise<SyncResult> {
   const fileHashMap = await hashFiles(files);
   const tree = buildMerkleTree(files, fileHashMap, rootDir);
 
-  const storedRoot = getDirHash(ROOT_KEY);
-  if (storedRoot && storedRoot.merkle_hash === tree.rootHash) {
+  const storedRoot = await storage.getDirHash(ROOT_KEY);
+  if (storedRoot && storedRoot === tree.rootHash) {
     log.info('Root Merkle hash unchanged — nothing to sync');
     return { added: [], modified: [], deleted: [], fileHashMap, tree };
   }
@@ -144,8 +245,8 @@ async function computeChanges(files: string[], rootDir: string): Promise<SyncRes
   const modified: string[] = [];
 
   for (const [dir, currentMerkle] of tree.dirHashes) {
-    const storedDirHash = getDirHash(dir);
-    if (storedDirHash && storedDirHash.merkle_hash === currentMerkle) {
+    const storedDirHash = await storage.getDirHash(dir);
+    if (storedDirHash && storedDirHash === currentMerkle) {
       continue;
     }
 
@@ -154,20 +255,23 @@ async function computeChanges(files: string[], rootDir: string): Promise<SyncRes
       const currentHash = fileHashMap.get(file);
       if (!currentHash) continue; // file failed to hash, skip
 
-      const storedFileHash = getFileHash(file);
+      const storedFileHash = await storage.getFileHash(file);
       if (!storedFileHash) {
         added.push(file);
-      } else if (storedFileHash.sha256 !== currentHash) {
+      } else if (storedFileHash !== currentHash) {
         modified.push(file);
       }
     }
   }
 
   const currentFileSet = new Set(files);
-  const storedHashes = getAllFileHashes();
-  const deleted = storedHashes
-    .filter((row) => !currentFileSet.has(row.file_path))
-    .map((row) => row.file_path);
+  const storedHashes = await storage.getAllFileHashes();
+  const deleted: string[] = [];
+  for (const [filePath] of storedHashes) {
+    if (!currentFileSet.has(filePath)) {
+      deleted.push(filePath);
+    }
+  }
 
   log.info(
     `Merkle diff: ${added.length} added, ${modified.length} modified, ${deleted.length} deleted (${files.length - added.length - modified.length} unchanged)`,
@@ -177,22 +281,22 @@ async function computeChanges(files: string[], rootDir: string): Promise<SyncRes
 }
 
 /**
- * Persist Merkle tree state to SQLite after successful indexing.
+ * Persist Merkle tree state after successful indexing.
  * Only rebuilds dir hashes from successful files to avoid poisoning the cache.
+ * Accepts an optional SyncStorage for the backend; defaults to SqliteSyncStorage.
  */
-function persistMerkleState(
+async function persistMerkleState(
   files: string[],
   fileHashMap: Map<string, string>,
   successfulFiles: Set<string>,
   rootDir: string,
-): void {
-  // Wrap entire persist in a transaction — either all state is saved or none
-  const db = getDb();
-  db.transaction(() => {
+  storage: SyncStorage = defaultStorage,
+): Promise<void> {
+  await storage.transaction(async () => {
     for (const file of successfulFiles) {
       const hash = fileHashMap.get(file);
       if (hash) {
-        setFileHash(file, hash);
+        await storage.setFileHash(file, hash);
       }
     }
 
@@ -200,23 +304,23 @@ function persistMerkleState(
     // caching dir hashes that include failed files
     const persistedHashMap = new Map<string, string>();
     for (const file of files) {
-      const stored = getFileHash(file);
+      const stored = await storage.getFileHash(file);
       if (stored) {
-        persistedHashMap.set(file, stored.sha256);
+        persistedHashMap.set(file, stored);
       }
     }
 
     const tree = buildMerkleTree(files, persistedHashMap, rootDir);
 
-    clearDirHashes();
+    await storage.clearDirHashes();
     for (const [dir, hash] of tree.dirHashes) {
-      setDirHash(dir, hash);
+      await storage.setDirHash(dir, hash);
     }
-    setDirHash(ROOT_KEY, tree.rootHash);
-  })();
+    await storage.setDirHash(ROOT_KEY, tree.rootHash);
+  });
 
-  log.info('Merkle tree state persisted to SQLite');
+  log.info('Merkle tree state persisted');
 }
 
-export { computeChanges, persistMerkleState };
-export type { SyncResult, MerkleTree };
+export { computeChanges, persistMerkleState, buildMerkleTree, hashFiles, SqliteSyncStorage };
+export type { SyncStorage, SyncResult, MerkleTree };
