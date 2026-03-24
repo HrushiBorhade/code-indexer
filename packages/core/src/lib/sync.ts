@@ -84,9 +84,6 @@ class SqliteSyncStorage implements SyncStorage {
   }
 
   async transaction<T>(fn: () => Promise<T>): Promise<T> {
-    // better-sqlite3 transactions are synchronous. Since SqliteSyncStorage
-    // methods wrap sync calls in async, all awaits resolve in the same
-    // microtask. We use manual BEGIN/COMMIT to support the async fn.
     const db = getDb();
     db.exec('BEGIN');
     try {
@@ -94,7 +91,11 @@ class SqliteSyncStorage implements SyncStorage {
       db.exec('COMMIT');
       return result;
     } catch (err) {
-      db.exec('ROLLBACK');
+      try {
+        db.exec('ROLLBACK');
+      } catch {
+        // Connection may already be closed or rolled back
+      }
       throw err;
     }
   }
@@ -267,9 +268,9 @@ async function computeChanges(
   const currentFileSet = new Set(files);
   const storedHashes = await storage.getAllFileHashes();
   const deleted: string[] = [];
-  for (const [filePath] of storedHashes) {
-    if (!currentFileSet.has(filePath)) {
-      deleted.push(filePath);
+  for (const storedPath of storedHashes.keys()) {
+    if (!currentFileSet.has(storedPath)) {
+      deleted.push(storedPath);
     }
   }
 
@@ -300,13 +301,13 @@ async function persistMerkleState(
       }
     }
 
-    // Rebuild tree using only files with persisted hashes to avoid
-    // caching dir hashes that include failed files
+    // Rebuild tree using only successful files — no need to read back
+    // from storage since we just wrote these exact hashes above.
     const persistedHashMap = new Map<string, string>();
     for (const file of files) {
-      const stored = await storage.getFileHash(file);
-      if (stored) {
-        persistedHashMap.set(file, stored);
+      if (successfulFiles.has(file)) {
+        const hash = fileHashMap.get(file);
+        if (hash) persistedHashMap.set(file, hash);
       }
     }
 
