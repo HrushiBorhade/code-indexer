@@ -93,54 +93,52 @@ async function chunkAST(source: string, filePath: string, language: string): Pro
 
   const nodeTypes = AST_NODE_TYPES[language];
   if (!nodeTypes) {
-    console.warn(
-      `[chunker] No AST node types configured for "${language}", using fallback: ${filePath}`,
-    );
+    log.warn(`No AST node types configured for "${language}", using fallback: ${filePath}`);
     return [fallbackChunk(source, filePath, language)];
   }
 
   const parser = new ParserClass();
   parser.setLanguage(lang);
 
-  let tree;
   try {
-    tree = parser.parse(source);
+    const tree = parser.parse(source);
+
+    try {
+      const chunks: Chunk[] = [];
+
+      for (const node of tree.rootNode.children) {
+        if (!nodeTypes.has(node.type)) continue;
+
+        const content = node.text.trim();
+        if (content.length === 0) continue;
+
+        chunks.push({
+          content,
+          filePath,
+          lineStart: node.startPosition.row + 1,
+          lineEnd: node.endPosition.row + 1,
+          language,
+          type: 'ast',
+        });
+      }
+
+      if (chunks.length === 0 && source.trim().length > 0) {
+        log.warn(`AST parsed but found 0 matching nodes for "${language}" in: ${filePath}`);
+        return [fallbackChunk(source, filePath, language)];
+      }
+
+      return chunks;
+    } finally {
+      tree.delete();
+    }
   } catch (err: unknown) {
     log.error(
       `tree-sitter parse failed for ${filePath}: ${err instanceof Error ? err.message : err}`,
     );
     return [fallbackChunk(source, filePath, language)];
+  } finally {
+    parser.delete();
   }
-
-  const chunks: Chunk[] = [];
-
-  for (const node of tree.rootNode.children) {
-    if (!nodeTypes.has(node.type)) continue;
-
-    const content = node.text.trim();
-    if (content.length === 0) continue;
-
-    chunks.push({
-      content,
-      filePath,
-      lineStart: node.startPosition.row + 1,
-      lineEnd: node.endPosition.row + 1,
-      language,
-      type: 'ast',
-    });
-  }
-
-  parser.delete();
-  tree.delete();
-
-  if (chunks.length === 0 && source.trim().length > 0) {
-    console.warn(
-      `[chunker] AST parsed but found 0 matching nodes for "${language}" in: ${filePath}`,
-    );
-    return [fallbackChunk(source, filePath, language)];
-  }
-
-  return chunks;
 }
 
 export { chunkAST };
