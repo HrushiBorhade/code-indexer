@@ -85,11 +85,7 @@ export const indexRepoTask = schemaTask({
 
       // 7. Compute Merkle diff
       const storage = new DrizzleSyncStorage(db, repoId);
-      const { added, modified, fileHashMap } = await computeChanges(
-        files,
-        cloneDir,
-        storage,
-      );
+      const { added, modified, fileHashMap } = await computeChanges(files, cloneDir, storage);
 
       if (added.length === 0 && modified.length === 0) {
         logger.info('No changes detected — skipping embedding');
