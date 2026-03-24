@@ -27,8 +27,14 @@ export { grepSearch } from './lib/grep.js';
 export { mergeResults } from './lib/merge.js';
 
 // Sync (Merkle tree)
-export { computeChanges, persistMerkleState } from './lib/sync.js';
-export type { SyncResult } from './lib/sync.js';
+export {
+  computeChanges,
+  persistMerkleState,
+  buildMerkleTree,
+  hashFiles,
+  SqliteSyncStorage,
+} from './lib/sync.js';
+export type { SyncStorage, SyncResult, MerkleTree } from './lib/sync.js';
 
 // Database (SQLite)
 export { initDb, closeDb } from './lib/db.js';
