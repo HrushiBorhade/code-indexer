@@ -12,13 +12,12 @@ import {
   embedChunks,
   upsertPoints,
   ensureCollection,
-  hashFiles,
   computeChanges,
   persistMerkleState,
   hashString,
 } from '@codeindexer/core';
 import type { Chunk, UpsertPoint } from '@codeindexer/core';
-import { createDb, repos, chunkCache, eq } from '@codeindexer/db';
+import { createDb, repos, chunkCache, eq, sql } from '@codeindexer/db';
 
 import { createAppJWT, getInstallationToken, downloadAndExtractTarball } from '../lib/github.js';
 import { uploadBuffer, uploadFile, uploadRepoFiles, buildFileTree } from '../lib/r2.js';
@@ -86,9 +85,13 @@ export const indexRepoTask = schemaTask({
 
       // 7. Compute Merkle diff
       const storage = new DrizzleSyncStorage(db, repoId);
-      const changes = await computeChanges(files, cloneDir, storage);
+      const { added, modified, fileHashMap } = await computeChanges(
+        files,
+        cloneDir,
+        storage,
+      );
 
-      if (changes.added.length === 0 && changes.modified.length === 0) {
+      if (added.length === 0 && modified.length === 0) {
         logger.info('No changes detected — skipping embedding');
         await db
           .update(repos)
@@ -106,7 +109,7 @@ export const indexRepoTask = schemaTask({
       await ensureCollection();
 
       // 9. Batched pipeline: chunk → embed → upsert
-      const changedFiles = [...changes.added, ...changes.modified];
+      const changedFiles = [...added, ...modified];
       let totalChunks = 0;
       const successfulFiles = new Set<string>();
 
@@ -154,37 +157,34 @@ export const indexRepoTask = schemaTask({
         // Upsert to Qdrant
         const ids = await upsertPoints(points);
 
-        // Save chunk cache entries
-        for (let j = 0; j < allChunks.length; j++) {
-          const chunk = allChunks[j]!;
-          const chunkHash = hashString(chunk.content);
-          await db
-            .insert(chunkCache)
-            .values({
-              repoId,
-              chunkHash,
-              qdrantId: ids[j]!,
-              filePath: path.relative(cloneDir, chunk.filePath),
-              lineStart: chunk.lineStart,
-              lineEnd: chunk.lineEnd,
-            })
-            .onConflictDoUpdate({
-              target: [chunkCache.repoId, chunkCache.chunkHash],
-              set: {
-                qdrantId: ids[j]!,
-                filePath: path.relative(cloneDir, chunk.filePath),
-                lineStart: chunk.lineStart,
-                lineEnd: chunk.lineEnd,
-              },
-            });
-        }
+        // Save chunk cache entries (bulk insert)
+        const cacheValues = allChunks.map((chunk, j) => ({
+          repoId,
+          chunkHash: hashString(chunk.content),
+          qdrantId: ids[j]!,
+          filePath: path.relative(cloneDir, chunk.filePath),
+          lineStart: chunk.lineStart,
+          lineEnd: chunk.lineEnd,
+        }));
+
+        await db
+          .insert(chunkCache)
+          .values(cacheValues)
+          .onConflictDoUpdate({
+            target: [chunkCache.repoId, chunkCache.chunkHash],
+            set: {
+              qdrantId: sql`excluded.qdrant_id`,
+              filePath: sql`excluded.file_path`,
+              lineStart: sql`excluded.line_start`,
+              lineEnd: sql`excluded.line_end`,
+            },
+          });
 
         totalChunks += allChunks.length;
         batch.forEach((f) => successfulFiles.add(f));
       }
 
-      // 10. Persist Merkle state
-      const fileHashMap = await hashFiles(files);
+      // 10. Persist Merkle state (reuse fileHashMap from computeChanges)
       await persistMerkleState(files, fileHashMap, successfulFiles, cloneDir, storage);
 
       // 11. Upload to R2

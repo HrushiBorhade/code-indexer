@@ -41,21 +41,28 @@ async function downloadAndExtractTarball(
   destDir: string,
   tarballPath: string,
 ): Promise<string> {
-  const res = await fetch(`https://api.github.com/repos/${fullName}/tarball/${ref}`, {
+  // Use redirect: 'manual' to capture the SHA from the redirect Location URL
+  // GitHub returns 302 → codeload.github.com/.../{sha}.tar.gz
+  const headRes = await fetch(`https://api.github.com/repos/${fullName}/tarball/${ref}`, {
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: 'application/vnd.github+json',
       'User-Agent': 'CodeIndexer/1.0',
     },
+    redirect: 'manual',
   });
-  if (!res.ok) throw new Error(`Tarball download failed: ${res.status}`);
 
-  // Extract commit SHA from Content-Disposition header
-  const disposition = res.headers.get('content-disposition') ?? '';
-  const shaMatch = disposition.match(/filename=.*-([a-f0-9]{7,40})\.tar\.gz/);
+  const location = headRes.headers.get('location') ?? '';
+  const shaMatch =
+    location.match(/\/([a-f0-9]{40})\.tar\.gz/) ?? location.match(/\/([a-f0-9]{7,40})/);
   const headSha = shaMatch?.[1] ?? 'unknown';
 
-  // Save tarball to disk (for R2 upload later)
+  if (!location) throw new Error(`Tarball download failed: no redirect (status ${headRes.status})`);
+
+  // Follow the redirect and save tarball to disk
+  const res = await fetch(location);
+  if (!res.ok) throw new Error(`Tarball download failed: ${res.status}`);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await pipeline(Readable.fromWeb(res.body as any), createWriteStream(tarballPath));
 

@@ -2,22 +2,26 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-function createR2Client() {
-  return new S3Client({
-    region: 'auto',
-    endpoint: process.env.R2_ENDPOINT!,
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-    },
-  });
+let _client: S3Client | null = null;
+
+function getR2Client(): S3Client {
+  if (!_client) {
+    _client = new S3Client({
+      region: 'auto',
+      endpoint: process.env.R2_ENDPOINT!,
+      credentials: {
+        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+      },
+    });
+  }
+  return _client;
 }
 
 const BUCKET = () => process.env.R2_BUCKET!;
 
 async function uploadBuffer(key: string, body: Buffer, contentType = 'application/octet-stream') {
-  const client = createR2Client();
-  await client.send(
+  await getR2Client().send(
     new PutObjectCommand({
       Bucket: BUCKET(),
       Key: key,
@@ -38,12 +42,22 @@ async function uploadRepoFiles(
   cloneDir: string,
   concurrency = 20,
 ) {
+  const client = getR2Client();
+  const bucket = BUCKET();
+
   for (let i = 0; i < files.length; i += concurrency) {
     const batch = files.slice(i, i + concurrency);
     await Promise.all(
       batch.map(async (file) => {
         const relativePath = path.relative(cloneDir, file);
-        await uploadFile(`repos/${repoId}/files/${relativePath}`, file);
+        const body = await readFile(file);
+        await client.send(
+          new PutObjectCommand({
+            Bucket: bucket,
+            Key: `repos/${repoId}/files/${relativePath}`,
+            Body: body,
+          }),
+        );
       }),
     );
   }
@@ -64,4 +78,4 @@ function buildFileTree(files: string[], cloneDir: string): Record<string, unknow
   return tree;
 }
 
-export { uploadBuffer, uploadFile, uploadRepoFiles, buildFileTree, createR2Client };
+export { uploadBuffer, uploadFile, uploadRepoFiles, buildFileTree, getR2Client };
