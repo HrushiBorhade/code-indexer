@@ -12,14 +12,16 @@ const log = createLogger('chunker');
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let ParserClass: any;
-let initialized = false;
+let initPromise: Promise<void> | null = null;
 
 async function ensureInit(): Promise<void> {
-  if (initialized) return;
-  const mod = await import('web-tree-sitter');
-  ParserClass = mod.default;
-  await ParserClass.init();
-  initialized = true;
+  if (initPromise) return initPromise;
+  initPromise = (async () => {
+    const mod = await import('web-tree-sitter');
+    ParserClass = mod.default;
+    await ParserClass.init();
+  })();
+  return initPromise;
 }
 
 // --- Grammar loading (WASM files from tree-sitter-wasms package) ---
@@ -39,18 +41,25 @@ const GRAMMAR_FILES: Record<string, string> = {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const languages = new Map<string, any>();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const languageLoading = new Map<string, Promise<any>>();
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getLanguage(language: string): Promise<any | undefined> {
   if (languages.has(language)) return languages.get(language)!;
+  if (languageLoading.has(language)) return languageLoading.get(language)!;
 
   const file = GRAMMAR_FILES[language];
   if (!file) return undefined;
 
   const wasmPath = resolve(wasmsDir, file);
-  const lang = await ParserClass.Language.load(wasmPath);
-  languages.set(language, lang);
-  return lang;
+  const p = ParserClass.Language.load(wasmPath).then((lang: unknown) => {
+    languages.set(language, lang);
+    languageLoading.delete(language);
+    return lang;
+  });
+  languageLoading.set(language, p);
+  return p;
 }
 
 // --- Top-level node types to extract per language ---
@@ -100,43 +109,42 @@ async function chunkAST(source: string, filePath: string, language: string): Pro
   const parser = new ParserClass();
   parser.setLanguage(lang);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let tree: any;
   try {
-    const tree = parser.parse(source);
+    tree = parser.parse(source);
 
-    try {
-      const chunks: Chunk[] = [];
+    const chunks: Chunk[] = [];
 
-      for (const node of tree.rootNode.children) {
-        if (!nodeTypes.has(node.type)) continue;
+    for (const node of tree.rootNode.children) {
+      if (!nodeTypes.has(node.type)) continue;
 
-        const content = node.text.trim();
-        if (content.length === 0) continue;
+      const content = node.text.trim();
+      if (content.length === 0) continue;
 
-        chunks.push({
-          content,
-          filePath,
-          lineStart: node.startPosition.row + 1,
-          lineEnd: node.endPosition.row + 1,
-          language,
-          type: 'ast',
-        });
-      }
-
-      if (chunks.length === 0 && source.trim().length > 0) {
-        log.warn(`AST parsed but found 0 matching nodes for "${language}" in: ${filePath}`);
-        return [fallbackChunk(source, filePath, language)];
-      }
-
-      return chunks;
-    } finally {
-      tree.delete();
+      chunks.push({
+        content,
+        filePath,
+        lineStart: node.startPosition.row + 1,
+        lineEnd: node.endPosition.row + 1,
+        language,
+        type: 'ast',
+      });
     }
+
+    if (chunks.length === 0 && source.trim().length > 0) {
+      log.warn(`AST parsed but found 0 matching nodes for "${language}" in: ${filePath}`);
+      return [fallbackChunk(source, filePath, language)];
+    }
+
+    return chunks;
   } catch (err: unknown) {
     log.error(
       `tree-sitter parse failed for ${filePath}: ${err instanceof Error ? err.message : err}`,
     );
     return [fallbackChunk(source, filePath, language)];
   } finally {
+    tree?.delete();
     parser.delete();
   }
 }
