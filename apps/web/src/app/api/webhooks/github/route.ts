@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { repos, account } from '@codeindexer/db/schema';
 import { eq, and } from '@codeindexer/db';
 import { db } from '@/lib/db';
+import { tasks } from '@trigger.dev/sdk/v3';
 
 if (!process.env.GITHUB_APP_WEBHOOK_SECRET)
   throw new Error('GITHUB_APP_WEBHOOK_SECRET is required');
@@ -87,7 +88,7 @@ async function upsertRepos(
   repositories: z.infer<typeof repoSchema>[],
 ) {
   // Batch upserts with Promise.all — avoids sequential HTTP round-trips to Neon
-  await Promise.all(
+  const results = await Promise.all(
     repositories.map((repo) =>
       db
         .insert(repos)
@@ -109,9 +110,18 @@ async function upsertRepos(
             status: 'pending',
             updatedAt: new Date(),
           },
-        }),
+        })
+        .returning({ id: repos.id }),
     ),
   );
+
+  // Trigger indexing for each upserted repo
+  for (const rows of results) {
+    const repoId = rows[0]?.id;
+    if (repoId) {
+      await tasks.trigger('index-repo', { repoId }, { idempotencyKey: `index-${repoId}` });
+    }
+  }
 }
 
 async function findUserByGitHubAccountId(githubAccountId: string) {
