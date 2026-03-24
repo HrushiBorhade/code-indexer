@@ -1,0 +1,12 @@
+{
+  "extends": "@codeindexer/tsconfig/library.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["src/**/*", "trigger.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}
