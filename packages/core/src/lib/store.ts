@@ -15,6 +15,8 @@ interface PointPayload {
   lineEnd: number;
   language: string;
   chunkHash: string;
+  repo_id?: string;
+  content?: string;
 }
 
 interface SearchResult {
@@ -149,9 +151,16 @@ async function ensureCollection(): Promise<void> {
   }
 
   log.info(`Created collection "${COLLECTION_NAME}" (${dimension} dimensions, cosine distance)`);
+
+  // Create payload index on repo_id for multi-tenant filtering
+  await qdrantRequest(`/collections/${COLLECTION_NAME}/index`, 'PUT', {
+    field_name: 'repo_id',
+    field_schema: 'keyword',
+  });
 }
 
 interface UpsertPoint {
+  id?: string;
   embedding: number[];
   payload: PointPayload;
 }
@@ -159,7 +168,7 @@ interface UpsertPoint {
 async function upsertPoints(points: UpsertPoint[]): Promise<string[]> {
   if (points.length === 0) return [];
 
-  const ids = points.map(() => randomUUID());
+  const ids = points.map((p) => p.id ?? randomUUID());
 
   const qdrantPoints = points.map((p, i) => ({
     id: ids[i],
@@ -186,23 +195,33 @@ async function upsertPoints(points: UpsertPoint[]): Promise<string[]> {
   return ids;
 }
 
-async function deletePoints(ids: string[]): Promise<void> {
-  if (ids.length === 0) return;
+async function deletePoints(ids: string[], repoId?: string): Promise<void> {
+  if (ids.length === 0 && !repoId) return;
+
+  const body = repoId
+    ? { filter: { must: [{ key: 'repo_id', match: { value: repoId } }] } }
+    : { points: ids };
 
   const { status, data } = await qdrantRequest(
     `/collections/${COLLECTION_NAME}/points/delete`,
     'POST',
-    { points: ids },
+    body,
   );
 
   if (status !== 200) {
     throw new Error(`Failed to delete points from Qdrant: ${JSON.stringify(data)}`);
   }
 
-  log.info(`Deleted ${ids.length} points from Qdrant`);
+  log.info(
+    repoId ? `Deleted points for repo ${repoId}` : `Deleted ${ids.length} points from Qdrant`,
+  );
 }
 
-async function searchPoints(vector: number[], limit: number = 10): Promise<SearchResult[]> {
+async function searchPoints(
+  vector: number[],
+  limit: number = 10,
+  repoId?: string,
+): Promise<SearchResult[]> {
   const { status, data } = await qdrantRequest(
     `/collections/${COLLECTION_NAME}/points/search`,
     'POST',
@@ -210,6 +229,9 @@ async function searchPoints(vector: number[], limit: number = 10): Promise<Searc
       vector,
       limit,
       with_payload: true,
+      ...(repoId && {
+        filter: { must: [{ key: 'repo_id', match: { value: repoId } }] },
+      }),
     },
   );
 

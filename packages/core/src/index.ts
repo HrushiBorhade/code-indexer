@@ -4,6 +4,7 @@ export type { Chunk } from './chunker/types.js';
 
 // Walker
 export { walkFiles } from './lib/walker.js';
+export type { WalkOptions } from './lib/walker.js';
 
 // Hash
 export { hashFile, hashString } from './lib/hash.js';

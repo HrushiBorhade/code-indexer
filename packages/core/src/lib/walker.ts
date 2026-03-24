@@ -43,31 +43,38 @@ async function isBinary(filePath: string): Promise<boolean> {
   }
 }
 
-async function discoverFiles(rootDir: string): Promise<string[]> {
-  try {
-    const { stdout } = await execFileAsync(
-      'git',
-      ['ls-files', '--cached', '--others', '--exclude-standard', '.'],
-      { cwd: rootDir, maxBuffer: MAX_BUFFER },
-    );
-    return stdout.split('\n').filter(Boolean);
-  } catch (err: unknown) {
-    log.warn(
-      `git ls-files failed, falling back to fast-glob (.gitignore rules will NOT apply): ${err instanceof Error ? err.message : err}`,
-    );
-    const files = await fg('**/*', {
-      cwd: rootDir,
-      ignore: FALLBACK_IGNORE,
-      dot: false,
-      absolute: false,
-    });
-    return files;
-  }
+interface WalkOptions {
+  useGit?: boolean;
 }
 
-async function walkFiles(rootDir: string): Promise<string[]> {
+async function discoverFiles(rootDir: string, useGit = true): Promise<string[]> {
+  if (useGit) {
+    try {
+      const { stdout } = await execFileAsync(
+        'git',
+        ['ls-files', '--cached', '--others', '--exclude-standard', '.'],
+        { cwd: rootDir, maxBuffer: MAX_BUFFER },
+      );
+      return stdout.split('\n').filter(Boolean);
+    } catch (err: unknown) {
+      log.warn(
+        `git ls-files failed, falling back to fast-glob (.gitignore rules will NOT apply): ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  const files = await fg('**/*', {
+    cwd: rootDir,
+    ignore: FALLBACK_IGNORE,
+    dot: false,
+    absolute: false,
+  });
+  return files;
+}
+
+async function walkFiles(rootDir: string, options?: WalkOptions): Promise<string[]> {
   const resolvedRoot = path.resolve(rootDir);
-  const relativePaths = await discoverFiles(resolvedRoot);
+  const relativePaths = await discoverFiles(resolvedRoot, options?.useGit ?? true);
   const supported = relativePaths.filter((file) => getLanguage(file) !== undefined);
 
   const results = await Promise.all(
@@ -82,3 +89,4 @@ async function walkFiles(rootDir: string): Promise<string[]> {
 }
 
 export { walkFiles, isBinary };
+export type { WalkOptions };
