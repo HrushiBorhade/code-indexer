@@ -15,6 +15,7 @@
 ### Task 1: Fix env.ts — remove dotenv and process.exit
 
 **Files:**
+
 - Modify: `packages/core/src/config/env.ts`
 
 - [ ] **Step 1: Read current env.ts**
@@ -34,6 +35,7 @@ Change `process.exit(1)` to `throw new Error('...')` with the same error message
 ```bash
 pnpm --filter @codeindexer/core typecheck
 ```
+
 Expected: PASS
 
 - [ ] **Step 5: Run all tests (excluding slow embedder)**
@@ -41,6 +43,7 @@ Expected: PASS
 ```bash
 pnpm --filter @codeindexer/core exec vitest run --exclude src/lib/embedder.test.ts
 ```
+
 Expected: 132 tests pass. If env validation fails in tests, the test setup may need to set the required env vars.
 
 - [ ] **Step 6: Commit**
@@ -55,6 +58,7 @@ git commit -m "fix: remove dotenv auto-load and process.exit from env.ts"
 ### Task 2: Add useGit flag to walker.ts
 
 **Files:**
+
 - Modify: `packages/core/src/lib/walker.ts`
 - Modify: `packages/core/src/lib/walker.test.ts` (add test for useGit: false)
 
@@ -65,6 +69,7 @@ Read `packages/core/src/lib/walker.ts`. Note: `walkFiles(rootDir)` first tries `
 - [ ] **Step 2: Write test for useGit: false**
 
 Add a test to `walker.test.ts`:
+
 ```typescript
 it('walks files without git when useGit is false', async () => {
   // Create a temp dir (NOT a git repo) with some .ts files
@@ -75,8 +80,8 @@ it('walks files without git when useGit is false', async () => {
 
   const files = await walkFiles(tmpDir, { useGit: false });
   expect(files).toHaveLength(2);
-  expect(files.some(f => f.endsWith('index.ts'))).toBe(true);
-  expect(files.some(f => f.endsWith('lib.ts'))).toBe(true);
+  expect(files.some((f) => f.endsWith('index.ts'))).toBe(true);
+  expect(files.some((f) => f.endsWith('lib.ts'))).toBe(true);
 
   await fs.rm(tmpDir, { recursive: true });
 });
@@ -87,11 +92,13 @@ it('walks files without git when useGit is false', async () => {
 ```bash
 pnpm --filter @codeindexer/core exec vitest run src/lib/walker.test.ts
 ```
+
 Expected: FAIL — `walkFiles` doesn't accept options parameter yet.
 
 - [ ] **Step 4: Add options parameter to walkFiles**
 
 In `walker.ts`, change the signature:
+
 ```typescript
 interface WalkOptions {
   useGit?: boolean;
@@ -107,6 +114,7 @@ When `options?.useGit === false`, skip the `git ls-files` attempt and go directl
 ```bash
 pnpm --filter @codeindexer/core exec vitest run src/lib/walker.test.ts
 ```
+
 Expected: ALL walker tests pass (existing + new).
 
 - [ ] **Step 6: Run typecheck**
@@ -114,6 +122,7 @@ Expected: ALL walker tests pass (existing + new).
 ```bash
 pnpm --filter @codeindexer/core typecheck
 ```
+
 Expected: PASS
 
 - [ ] **Step 7: Commit**
@@ -128,6 +137,7 @@ git commit -m "feat: add useGit option to walkFiles for non-git directories"
 ### Task 3: Extend store.ts for multi-tenant Qdrant
 
 **Files:**
+
 - Modify: `packages/core/src/lib/store.ts`
 - Modify: `packages/core/src/lib/store.test.ts`
 
@@ -156,7 +166,7 @@ Make them optional so existing CLI usage doesn't break.
 
 ```typescript
 interface UpsertPoint {
-  id?: string;        // Deterministic ID (UUID v5). If omitted, random UUID generated.
+  id?: string; // Deterministic ID (UUID v5). If omitted, random UUID generated.
   embedding: number[];
   payload: PointPayload;
 }
@@ -167,10 +177,13 @@ In `upsertPoints`, use `point.id ?? randomUUID()` instead of always `randomUUID(
 - [ ] **Step 4: Add repoId filter to searchPoints**
 
 Add optional `repoId?: string` parameter. When provided, add Qdrant filter:
+
 ```typescript
-filter: repoId ? {
-  must: [{ key: 'repo_id', match: { value: repoId } }]
-} : undefined
+filter: repoId
+  ? {
+      must: [{ key: 'repo_id', match: { value: repoId } }],
+    }
+  : undefined;
 ```
 
 - [ ] **Step 5: Add repoId filter to deletePoints**
@@ -180,6 +193,7 @@ Same pattern — accept optional `repoId` for filtered deletion, or accept point
 - [ ] **Step 6: Add payload index creation to ensureCollection**
 
 After creating the collection, create a keyword payload index on `repo_id`:
+
 ```typescript
 await fetch(`${QDRANT_URL}/collections/${COLLECTION_NAME}/index`, {
   method: 'PUT',
@@ -193,6 +207,7 @@ await fetch(`${QDRANT_URL}/collections/${COLLECTION_NAME}/index`, {
 ```bash
 pnpm --filter @codeindexer/core exec vitest run src/lib/store.test.ts
 ```
+
 Expected: ALL existing tests pass (optional fields don't break them).
 
 - [ ] **Step 8: Run typecheck**
@@ -200,6 +215,7 @@ Expected: ALL existing tests pass (optional fields don't break them).
 ```bash
 pnpm --filter @codeindexer/core typecheck
 ```
+
 Expected: PASS
 
 - [ ] **Step 9: Commit**
@@ -214,6 +230,7 @@ git commit -m "feat: extend store.ts for multi-tenant Qdrant (repo_id, determini
 ### Task 4: Update exports and run full checks
 
 **Files:**
+
 - Modify: `packages/core/src/index.ts` (if new exports needed)
 
 - [ ] **Step 1: Verify barrel exports include new types**
@@ -227,6 +244,7 @@ pnpm format
 pnpm --filter @codeindexer/core typecheck
 pnpm --filter @codeindexer/core lint
 ```
+
 Expected: ALL pass
 
 - [ ] **Step 3: Run all core tests**
@@ -234,6 +252,7 @@ Expected: ALL pass
 ```bash
 pnpm --filter @codeindexer/core exec vitest run --exclude src/lib/embedder.test.ts
 ```
+
 Expected: 132+ tests pass
 
 - [ ] **Step 4: Push and create PR**

@@ -68,15 +68,20 @@ describe('store', () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
       fetchSpy
         .mockResolvedValueOnce(mockJsonResponse({ status: { error: 'not found' } }, 404))
-        .mockResolvedValueOnce(mockJsonResponse({ result: true }, 200));
+        .mockResolvedValueOnce(mockJsonResponse({ result: true }, 200))
+        .mockResolvedValueOnce(mockJsonResponse({ result: true }, 200)); // payload index
 
       await ensureCollection();
 
-      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      expect(fetchSpy).toHaveBeenCalledTimes(3);
 
       const createBody = getRequestBody(1);
       expect(createBody.vectors.size).toBe(1536);
       expect(createBody.vectors.distance).toBe('Cosine');
+
+      const indexBody = getRequestBody(2);
+      expect(indexBody.field_name).toBe('repo_id');
+      expect(indexBody.field_schema).toBe('keyword');
     });
 
     it('throws on non-200/non-404 status from GET check', async () => {

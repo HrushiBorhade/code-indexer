@@ -153,4 +153,15 @@ describe('walkFiles', () => {
     const files = await walkFiles(testDir);
     expect(files.length).toBe(25);
   });
+
+  it('walks files without git when useGit is false', async () => {
+    await writeFile(path.join(testDir, 'index.ts'), 'export const a = 1;');
+    await mkdir(path.join(testDir, 'src'), { recursive: true });
+    await writeFile(path.join(testDir, 'src', 'lib.ts'), 'export const b = 2;');
+
+    const files = await walkFiles(testDir, { useGit: false });
+    expect(files).toHaveLength(2);
+    expect(files.some((f) => f.endsWith('index.ts'))).toBe(true);
+    expect(files.some((f) => f.endsWith('lib.ts'))).toBe(true);
+  });
 });

@@ -1,11 +1,4 @@
-import dotenv from 'dotenv';
 import { z } from 'zod';
-
-// Load .env before validation — must happen in this file so any importer gets env populated
-const dotenvResult = dotenv.config();
-if (dotenvResult.error && (dotenvResult.error as NodeJS.ErrnoException).code !== 'ENOENT') {
-  console.warn(`[env] Warning: Failed to parse .env file: ${dotenvResult.error.message}`);
-}
 
 // Treat empty strings as undefined (common with dotenv placeholders like QDRANT_URL=)
 function emptyToUndefined(val: unknown) {
@@ -31,9 +24,9 @@ if (!result.success) {
   const missing = result.error.issues
     .map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`)
     .join('\n');
-  console.error(`[env] Missing or invalid environment variables:\n${missing}`);
-  console.error('[env] Set these in a .env file at the project root.');
-  process.exit(1);
+  throw new Error(
+    `Missing or invalid environment variables:\n${missing}\nSet these in a .env file at the project root.`,
+  );
 }
 
 const env = result.data;

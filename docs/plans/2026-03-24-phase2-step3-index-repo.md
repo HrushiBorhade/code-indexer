@@ -16,6 +16,7 @@
 ### Task 1: Scaffold apps/trigger package
 
 **Files:**
+
 - Create: `apps/trigger/package.json`
 - Create: `apps/trigger/tsconfig.json`
 - Create: `apps/trigger/trigger.config.ts`
@@ -72,13 +73,13 @@
 - [ ] **Step 3: Create trigger.config.ts**
 
 ```typescript
-import { defineConfig } from "@trigger.dev/sdk";
+import { defineConfig } from '@trigger.dev/sdk';
 
 export default defineConfig({
-  project: "<project-ref>", // Fill after creating Trigger.dev project
-  dirs: ["./src/tasks"],
-  runtime: "node",
-  defaultMachine: "small-2x", // 1 vCPU, 1GB RAM
+  project: '<project-ref>', // Fill after creating Trigger.dev project
+  dirs: ['./src/tasks'],
+  runtime: 'node',
+  defaultMachine: 'small-2x', // 1 vCPU, 1GB RAM
   maxDuration: 300, // 5 minutes
   retries: {
     default: {
@@ -89,7 +90,7 @@ export default defineConfig({
     },
   },
   build: {
-    external: ["web-tree-sitter", "better-sqlite3", "tree-sitter-wasms"],
+    external: ['web-tree-sitter', 'better-sqlite3', 'tree-sitter-wasms'],
   },
 });
 ```
@@ -124,6 +125,7 @@ git commit -m "chore: scaffold apps/trigger package for Trigger.dev"
 ### Task 2: Implement lib/github.ts — JWT + token + tarball
 
 **Files:**
+
 - Create: `apps/trigger/src/lib/github.ts`
 
 - [ ] **Step 1: Create github.ts with JWT generation**
@@ -142,12 +144,10 @@ function createAppJWT(appId: string, privateKey: string): string {
   const now = Math.floor(Date.now() / 1000);
   const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
   const payload = Buffer.from(
-    JSON.stringify({ iat: now - 60, exp: now + 600, iss: appId })
+    JSON.stringify({ iat: now - 60, exp: now + 600, iss: appId }),
   ).toString('base64url');
   const key = createPrivateKey(privateKey);
-  const signature = createSign('RSA-SHA256')
-    .update(`${header}.${payload}`)
-    .sign(key, 'base64url');
+  const signature = createSign('RSA-SHA256').update(`${header}.${payload}`).sign(key, 'base64url');
   return `${header}.${payload}.${signature}`;
 }
 
@@ -162,10 +162,10 @@ async function getInstallationToken(installationId: number, appJwt: string): Pro
         'User-Agent': 'CodeIndexer/1.0',
         'X-GitHub-Api-Version': '2022-11-28',
       },
-    }
+    },
   );
   if (!res.ok) throw new Error(`Failed to get installation token: ${res.status}`);
-  const data = await res.json() as { token: string };
+  const data = (await res.json()) as { token: string };
   return data.token;
 }
 
@@ -176,16 +176,13 @@ async function downloadAndExtractTarball(
   destDir: string,
   tarballPath: string,
 ): Promise<string> {
-  const res = await fetch(
-    `https://api.github.com/repos/${fullName}/tarball/${ref}`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'CodeIndexer/1.0',
-      },
-    }
-  );
+  const res = await fetch(`https://api.github.com/repos/${fullName}/tarball/${ref}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'CodeIndexer/1.0',
+    },
+  });
   if (!res.ok) throw new Error(`Tarball download failed: ${res.status}`);
 
   // Extract commit SHA from Content-Disposition header
@@ -224,6 +221,7 @@ git commit -m "feat: add GitHub App JWT, installation token, and tarball downloa
 ### Task 3: Implement lib/r2.ts — R2 upload helpers
 
 **Files:**
+
 - Create: `apps/trigger/src/lib/r2.ts`
 
 - [ ] **Step 1: Create r2.ts**
@@ -248,7 +246,9 @@ const BUCKET = () => process.env.R2_BUCKET!;
 
 async function uploadBuffer(key: string, body: Buffer, contentType = 'application/octet-stream') {
   const client = createR2Client();
-  await client.send(new PutObjectCommand({ Bucket: BUCKET(), Key: key, Body: body, ContentType: contentType }));
+  await client.send(
+    new PutObjectCommand({ Bucket: BUCKET(), Key: key, Body: body, ContentType: contentType }),
+  );
 }
 
 async function uploadFile(key: string, filePath: string) {
@@ -309,6 +309,7 @@ git commit -m "feat: add R2 upload helpers using @aws-sdk/client-s3"
 ### Task 4: Implement DrizzleSyncStorage
 
 **Files:**
+
 - Create: `apps/trigger/src/lib/drizzle-sync-storage.ts`
 
 - [ ] **Step 1: Create drizzle-sync-storage.ts**
@@ -316,6 +317,7 @@ git commit -m "feat: add R2 upload helpers using @aws-sdk/client-s3"
 Implements the `SyncStorage` interface from `@codeindexer/core`, scoped by `repoId`. Uses Drizzle ORM queries against the `fileHashes` and `dirHashes` tables in `@codeindexer/db`.
 
 See spec section 7 for the full implementation. Key method signatures:
+
 - `constructor(db: Database, repoId: string)`
 - `getFileHash(filePath)` → SELECT from fileHashes
 - `setFileHash(filePath, hash)` → INSERT ON CONFLICT UPDATE
@@ -343,11 +345,13 @@ git commit -m "feat: add DrizzleSyncStorage for Neon Postgres Merkle state"
 ### Task 5: Implement index-repo task
 
 **Files:**
+
 - Create: `apps/trigger/src/tasks/index-repo.ts`
 
 - [ ] **Step 1: Create index-repo.ts**
 
 This is the main task. It wires together all the pieces:
+
 1. Load repo from DB, set status 'cloning'
 2. Generate installation token via `lib/github.ts`
 3. Download + extract tarball
@@ -359,6 +363,7 @@ This is the main task. It wires together all the pieces:
 9. Cleanup in finally block
 
 Use `schemaTask()` with Zod input validation:
+
 ```typescript
 import { schemaTask } from '@trigger.dev/sdk';
 import { z } from 'zod';
@@ -386,6 +391,7 @@ git commit -m "feat: implement index-repo Trigger.dev task"
 ### Task 6: Wire webhook → task trigger
 
 **Files:**
+
 - Modify: `apps/web/src/app/api/webhooks/github/route.ts`
 - Modify: `apps/web/package.json` (add @trigger.dev/sdk)
 
@@ -404,11 +410,15 @@ import { tasks } from '@trigger.dev/sdk';
 import type { indexRepoTask } from '@codeindexer/trigger/tasks/index-repo';
 
 // After each repo is upserted:
-await tasks.trigger<typeof indexRepoTask>('index-repo', {
-  repoId: repo.id,
-}, {
-  idempotencyKey: `index-${repo.id}`,
-});
+await tasks.trigger<typeof indexRepoTask>(
+  'index-repo',
+  {
+    repoId: repo.id,
+  },
+  {
+    idempotencyKey: `index-${repo.id}`,
+  },
+);
 ```
 
 Use `idempotencyKey` for built-in dedup (Trigger.dev native feature).
@@ -439,6 +449,7 @@ git commit -m "feat: wire webhook to trigger index-repo task"
 - [ ] **Step 1: Set up all env vars**
 
 Ensure `apps/trigger/.env` and `apps/web/.env.local` have:
+
 - `TRIGGER_SECRET_KEY`
 - `QDRANT_URL`, `QDRANT_KEY`
 - `OPENAI_API_KEY`
