@@ -153,10 +153,18 @@ async function ensureCollection(): Promise<void> {
   log.info(`Created collection "${COLLECTION_NAME}" (${dimension} dimensions, cosine distance)`);
 
   // Create payload index on repo_id for multi-tenant filtering
-  await qdrantRequest(`/collections/${COLLECTION_NAME}/index`, 'PUT', {
-    field_name: 'repo_id',
-    field_schema: 'keyword',
-  });
+  const { status: indexStatus, data: indexData } = await qdrantRequest(
+    `/collections/${COLLECTION_NAME}/index`,
+    'PUT',
+    {
+      field_name: 'repo_id',
+      field_schema: 'keyword',
+    },
+  );
+
+  if (indexStatus !== 200) {
+    log.warn(`Failed to create repo_id payload index: ${JSON.stringify(indexData)}`);
+  }
 }
 
 interface UpsertPoint {
