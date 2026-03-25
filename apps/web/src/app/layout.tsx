@@ -9,10 +9,7 @@ const geistSans = Geist({
   subsets: ['latin'],
 });
 
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono',
-});
+const jetbrainsMono = JetBrains_Mono({subsets:['latin'],variable:'--font-mono'});
 
 export const metadata: Metadata = {
   title: 'CodeIndexer',
@@ -28,7 +25,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={cn('h-full antialiased', geistSans.variable, jetbrainsMono.variable)}
+      className={cn('dark h-full antialiased', geistSans.variable, jetbrainsMono.variable)}
     >
       <body className="flex min-h-full flex-col">
         <Providers>{children}</Providers>

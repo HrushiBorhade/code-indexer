@@ -9,6 +9,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-mono);
+  --font-heading: var(--font-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -38,83 +39,90 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --color-tui-corner: var(--tui-corner);
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
 }
 
+/* ── TUI Dark-only palette ──────────────────────────────────── */
+
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --radius: 0px;
+  --background: oklch(0.1 0 0);
+  --foreground: oklch(0.87 0.02 75);
+  --card: oklch(0.12 0 0);
+  --card-foreground: oklch(0.87 0.02 75);
+  --popover: oklch(0.12 0 0);
+  --popover-foreground: oklch(0.87 0.02 75);
+  --primary: oklch(0.65 0.2 38);
+  --primary-foreground: oklch(0.98 0.01 75);
+  --secondary: oklch(0.18 0 0);
+  --secondary-foreground: oklch(0.75 0.015 75);
+  --muted: oklch(0.18 0 0);
+  --muted-foreground: oklch(0.55 0.01 75);
+  --accent: oklch(0.18 0 0);
+  --accent-foreground: oklch(0.87 0.02 75);
+  --destructive: oklch(0.6 0.22 25);
+  --border: oklch(0.35 0.01 75);
+  --input: oklch(0.25 0.005 75);
+  --ring: oklch(0.65 0.2 38);
+  --chart-1: oklch(0.65 0.2 38);
+  --chart-2: oklch(0.55 0.15 38);
+  --chart-3: oklch(0.45 0.1 38);
+  --chart-4: oklch(0.35 0.05 38);
+  --chart-5: oklch(0.25 0.02 38);
+  --sidebar: oklch(0.1 0 0);
+  --sidebar-foreground: oklch(0.87 0.02 75);
+  --sidebar-primary: oklch(0.65 0.2 38);
+  --sidebar-primary-foreground: oklch(0.98 0.01 75);
+  --sidebar-accent: oklch(0.16 0.005 75);
+  --sidebar-accent-foreground: oklch(0.87 0.02 75);
+  --sidebar-border: oklch(0.35 0.01 75);
+  --sidebar-ring: oklch(0.65 0.2 38);
+  --tui-corner: oklch(0.4 0.01 75);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: oklch(0.1 0 0);
+  --foreground: oklch(0.87 0.02 75);
+  --card: oklch(0.12 0 0);
+  --card-foreground: oklch(0.87 0.02 75);
+  --popover: oklch(0.12 0 0);
+  --popover-foreground: oklch(0.87 0.02 75);
+  --primary: oklch(0.65 0.2 38);
+  --primary-foreground: oklch(0.98 0.01 75);
+  --secondary: oklch(0.18 0 0);
+  --secondary-foreground: oklch(0.75 0.015 75);
+  --muted: oklch(0.18 0 0);
+  --muted-foreground: oklch(0.55 0.01 75);
+  --accent: oklch(0.18 0 0);
+  --accent-foreground: oklch(0.87 0.02 75);
+  --destructive: oklch(0.6 0.22 25);
+  --border: oklch(0.35 0.01 75);
+  --input: oklch(0.25 0.005 75);
+  --ring: oklch(0.65 0.2 38);
+  --chart-1: oklch(0.65 0.2 38);
+  --chart-2: oklch(0.55 0.15 38);
+  --chart-3: oklch(0.45 0.1 38);
+  --chart-4: oklch(0.35 0.05 38);
+  --chart-5: oklch(0.25 0.02 38);
+  --sidebar: oklch(0.1 0 0);
+  --sidebar-foreground: oklch(0.87 0.02 75);
+  --sidebar-primary: oklch(0.65 0.2 38);
+  --sidebar-primary-foreground: oklch(0.98 0.01 75);
+  --sidebar-accent: oklch(0.16 0.005 75);
+  --sidebar-accent-foreground: oklch(0.87 0.02 75);
+  --sidebar-border: oklch(0.35 0.01 75);
+  --sidebar-ring: oklch(0.65 0.2 38);
+  --tui-corner: oklch(0.4 0.01 75);
 }
+
+/* ── Base styles ────────────────────────────────────────────── */
 
 @layer base {
   * {
@@ -125,5 +133,146 @@
   }
   html {
     @apply font-mono;
+  }
+}
+
+/* ── TUI L-shaped corner borders ────────────────────────────── */
+
+@layer components {
+  .tui-corners {
+    position: relative;
+  }
+
+  .tui-corners::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    background:
+      /* top-left horizontal */
+      linear-gradient(to right, var(--tui-corner) 24px, transparent 24px) top left / 24px 1px no-repeat,
+      /* top-left vertical */
+      linear-gradient(to bottom, var(--tui-corner) 24px, transparent 24px) top left / 1px 24px no-repeat,
+      /* top-right horizontal */
+      linear-gradient(to left, var(--tui-corner) 24px, transparent 24px) top right / 24px 1px no-repeat,
+      /* top-right vertical */
+      linear-gradient(to bottom, var(--tui-corner) 24px, transparent 24px) top right / 1px 24px no-repeat,
+      /* bottom-left horizontal */
+      linear-gradient(to right, var(--tui-corner) 24px, transparent 24px) bottom left / 24px 1px no-repeat,
+      /* bottom-left vertical */
+      linear-gradient(to top, var(--tui-corner) 24px, transparent 24px) bottom left / 1px 24px no-repeat,
+      /* bottom-right horizontal */
+      linear-gradient(to left, var(--tui-corner) 24px, transparent 24px) bottom right / 24px 1px no-repeat,
+      /* bottom-right vertical */
+      linear-gradient(to top, var(--tui-corner) 24px, transparent 24px) bottom right / 1px 24px no-repeat;
+  }
+
+  /* Smaller corners for compact elements */
+  .tui-corners-sm {
+    position: relative;
+  }
+
+  .tui-corners-sm::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    background:
+      linear-gradient(to right, var(--tui-corner) 12px, transparent 12px) top left / 12px 1px no-repeat,
+      linear-gradient(to bottom, var(--tui-corner) 12px, transparent 12px) top left / 1px 12px no-repeat,
+      linear-gradient(to left, var(--tui-corner) 12px, transparent 12px) top right / 12px 1px no-repeat,
+      linear-gradient(to bottom, var(--tui-corner) 12px, transparent 12px) top right / 1px 12px no-repeat,
+      linear-gradient(to right, var(--tui-corner) 12px, transparent 12px) bottom left / 12px 1px no-repeat,
+      linear-gradient(to top, var(--tui-corner) 12px, transparent 12px) bottom left / 1px 12px no-repeat,
+      linear-gradient(to left, var(--tui-corner) 12px, transparent 12px) bottom right / 12px 1px no-repeat,
+      linear-gradient(to top, var(--tui-corner) 12px, transparent 12px) bottom right / 1px 12px no-repeat;
+  }
+
+  /* Larger corners for page-level panels */
+  .tui-corners-lg {
+    position: relative;
+  }
+
+  .tui-corners-lg::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    background:
+      linear-gradient(to right, var(--tui-corner) 36px, transparent 36px) top left / 36px 1px no-repeat,
+      linear-gradient(to bottom, var(--tui-corner) 36px, transparent 36px) top left / 1px 36px no-repeat,
+      linear-gradient(to left, var(--tui-corner) 36px, transparent 36px) top right / 36px 1px no-repeat,
+      linear-gradient(to bottom, var(--tui-corner) 36px, transparent 36px) top right / 1px 36px no-repeat,
+      linear-gradient(to right, var(--tui-corner) 36px, transparent 36px) bottom left / 36px 1px no-repeat,
+      linear-gradient(to top, var(--tui-corner) 36px, transparent 36px) bottom left / 1px 36px no-repeat,
+      linear-gradient(to left, var(--tui-corner) 36px, transparent 36px) bottom right / 36px 1px no-repeat,
+      linear-gradient(to top, var(--tui-corner) 36px, transparent 36px) bottom right / 1px 36px no-repeat;
+  }
+
+  /* Active/highlighted variant with primary color */
+  .tui-corners-active::before {
+    --tui-corner: var(--primary) !important;
+  }
+
+  /* Button TUI corners — outline variant gets L-corners */
+  [data-slot="button"][data-variant="outline"] {
+    position: relative;
+    overflow: visible;
+  }
+  [data-slot="button"][data-variant="outline"]::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    pointer-events: none;
+    z-index: 1;
+    background:
+      linear-gradient(to right, var(--primary) 8px, transparent 8px) top left / 8px 1px no-repeat,
+      linear-gradient(to bottom, var(--primary) 8px, transparent 8px) top left / 1px 8px no-repeat,
+      linear-gradient(to left, var(--primary) 8px, transparent 8px) top right / 8px 1px no-repeat,
+      linear-gradient(to bottom, var(--primary) 8px, transparent 8px) top right / 1px 8px no-repeat,
+      linear-gradient(to right, var(--primary) 8px, transparent 8px) bottom left / 8px 1px no-repeat,
+      linear-gradient(to top, var(--primary) 8px, transparent 8px) bottom left / 1px 8px no-repeat,
+      linear-gradient(to left, var(--primary) 8px, transparent 8px) bottom right / 8px 1px no-repeat,
+      linear-gradient(to top, var(--primary) 8px, transparent 8px) bottom right / 1px 8px no-repeat;
+  }
+  [data-slot="button"][data-variant="outline"]:hover::before {
+    --primary: var(--foreground);
+  }
+
+  /* Ghost and secondary buttons — subtle corners on hover */
+  [data-slot="button"][data-variant="ghost"]:hover,
+  [data-slot="button"][data-variant="secondary"] {
+    position: relative;
+    overflow: visible;
+  }
+  [data-slot="button"][data-variant="ghost"]:hover::before,
+  [data-slot="button"][data-variant="secondary"]::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    pointer-events: none;
+    z-index: 1;
+    background:
+      linear-gradient(to right, var(--muted-foreground) 6px, transparent 6px) top left / 6px 1px no-repeat,
+      linear-gradient(to bottom, var(--muted-foreground) 6px, transparent 6px) top left / 1px 6px no-repeat,
+      linear-gradient(to left, var(--muted-foreground) 6px, transparent 6px) top right / 6px 1px no-repeat,
+      linear-gradient(to bottom, var(--muted-foreground) 6px, transparent 6px) top right / 1px 6px no-repeat,
+      linear-gradient(to right, var(--muted-foreground) 6px, transparent 6px) bottom left / 6px 1px no-repeat,
+      linear-gradient(to top, var(--muted-foreground) 6px, transparent 6px) bottom left / 1px 6px no-repeat,
+      linear-gradient(to left, var(--muted-foreground) 6px, transparent 6px) bottom right / 6px 1px no-repeat,
+      linear-gradient(to top, var(--muted-foreground) 6px, transparent 6px) bottom right / 1px 6px no-repeat;
+  }
+
+  /* TUI header label style */
+  .tui-label {
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--primary);
   }
 }

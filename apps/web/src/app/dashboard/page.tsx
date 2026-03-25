@@ -21,8 +21,8 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Repositories</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="tui-label text-base">Repositories</h1>
+          <p className="mt-1 text-xs text-muted-foreground">
             {userRepos.length > 0
               ? `${userRepos.length} ${userRepos.length === 1 ? 'repository' : 'repositories'} connected`
               : 'Connect your GitHub repositories to start indexing'}

@@ -38,7 +38,7 @@ export function RepoCard({
   const [owner, name] = fullName.split('/');
 
   return (
-    <Card className="transition-colors hover:border-foreground/20">
+    <Card className="transition-colors hover:tui-corners-active">
       <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0 pb-3">
         <div className="min-w-0">
           <CardTitle className="truncate font-mono text-sm font-medium">

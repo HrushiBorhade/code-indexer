@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { GithubLogo, Terminal, MagnifyingGlass, Lightning } from '@phosphor-icons/react';
+import { GithubLogo, Terminal, ArrowLeft } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { authClient } from '@/lib/auth-client';
+import Link from 'next/link';
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
@@ -21,83 +23,102 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
-      {/* Left — branding panel */}
-      <div className="relative hidden flex-col justify-between overflow-hidden border-r bg-muted/50 p-10 lg:flex">
-        <div className="flex items-center gap-2 font-mono text-sm font-semibold">
-          <Terminal className="size-5" weight="bold" />
-          CodeIndexer
-        </div>
-
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
-              <span className="text-green-500">$</span> codeindexer search &quot;authentication
-              middleware&quot;
-            </div>
-            <div className="rounded-md border bg-card p-4 font-mono text-xs leading-relaxed">
-              <div className="text-muted-foreground">
-                Found <span className="text-foreground">12 results</span> across{' '}
-                <span className="text-foreground">3 repositories</span>
-              </div>
-              <div className="mt-2 space-y-1.5">
-                <div>
-                  <span className="text-blue-400">src/proxy.ts</span>
-                  <span className="text-muted-foreground">:12</span>
-                  <span className="ml-2 text-muted-foreground">— optimistic cookie check</span>
-                </div>
-                <div>
-                  <span className="text-blue-400">src/lib/dal.ts</span>
-                  <span className="text-muted-foreground">:8</span>
-                  <span className="ml-2 text-muted-foreground">— cached session verification</span>
-                </div>
-                <div>
-                  <span className="text-blue-400">src/lib/auth.ts</span>
-                  <span className="text-muted-foreground">:14</span>
-                  <span className="ml-2 text-muted-foreground">— betterAuth config</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-6 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5">
-            <MagnifyingGlass className="size-3.5" weight="bold" />
-            Semantic Search
-          </span>
-          <span className="flex items-center gap-1.5">
-            <Lightning className="size-3.5" weight="bold" />
-            AST Chunking
-          </span>
-          <span className="flex items-center gap-1.5">
-            <Terminal className="size-3.5" weight="bold" />
-            Hybrid Search
-          </span>
-        </div>
-      </div>
-
-      {/* Right — sign in */}
-      <div className="flex flex-col items-center justify-center p-6 lg:p-10">
-        <div className="mx-auto w-full max-w-sm space-y-6">
-          <div className="space-y-2 text-center">
-            <div className="mx-auto mb-4 flex size-10 items-center justify-center rounded-lg border bg-card lg:hidden">
-              <Terminal className="size-5" weight="bold" />
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight">Sign in to CodeIndexer</h1>
-            <p className="text-sm text-muted-foreground">
-              Connect your GitHub account to index and search your codebase
-            </p>
+    <div className="relative min-h-screen">
+      {/* Outer square border frame — flush to viewport with thin inset */}
+      <div className="relative grid min-h-screen border border-border/30 m-3 lg:grid-cols-2">
+        {/* Left — branding + auth */}
+        <div className="flex flex-col justify-between p-8 lg:p-12">
+          <div>
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="size-3.5" weight="bold" />
+              Back
+            </Link>
           </div>
 
-          <Button className="w-full" size="lg" onClick={handleGitHubSignIn} disabled={loading}>
-            <GithubLogo weight="bold" />
-            {loading ? 'Redirecting...' : 'Continue with GitHub'}
-          </Button>
+          <div className="mx-auto w-full max-w-sm space-y-8">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+                <span>Code</span>
+                <span className="inline-flex size-7 items-center justify-center border border-primary bg-primary text-xs font-bold text-primary-foreground">
+                  I
+                </span>
+                <span>ndexer</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Semantic code search for your repositories
+              </p>
+            </div>
 
-          <p className="text-center text-xs text-muted-foreground">
-            By signing in, you agree to grant read access to your selected repositories.
+            <div className="flex items-center gap-3">
+              <Badge variant="outline" className="border-primary/50 text-primary">
+                <span className="mr-1 inline-block size-1.5 bg-primary" />
+                EARLY ACCESS
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                Be one of the first <span className="font-semibold text-foreground">100</span> users.
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
+                Your Code Is Ready.
+                <br />
+                <span className="text-primary">Search Smarter.</span>
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Connect your GitHub repos, index with AST-aware chunking, and search your entire
+                codebase by meaning. Get started now.
+              </p>
+            </div>
+
+            <Button
+              className="w-full border border-primary"
+              size="lg"
+              onClick={handleGitHubSignIn}
+              disabled={loading}
+            >
+              <GithubLogo weight="bold" />
+              {loading ? 'Redirecting...' : 'Continue with GitHub'}
+            </Button>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            &copy; {new Date().getFullYear()} CodeIndexer. All rights reserved.
           </p>
+        </div>
+
+        {/* Right — hero image panel */}
+        <div className="relative hidden overflow-hidden border-l border-border/30 lg:block">
+          <div className="relative size-full">
+            {/* Gradient placeholder for hero image */}
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-background to-primary/5" />
+
+            {/* Terminal overlay pattern — scanlines */}
+            <div className="absolute inset-0 opacity-10" style={{
+              backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, currentColor 2px, currentColor 3px)',
+              backgroundSize: '100% 3px',
+            }} />
+
+            {/* Content overlay at bottom */}
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background via-background/80 to-transparent p-8 pt-16">
+              <div className="space-y-3">
+                <span className="tui-label">CodeIndexer</span>
+                <h2 className="text-2xl font-bold tracking-tight">
+                  Find the <span className="text-primary">Signal.</span>
+                  <br />
+                  Skip the <span className="text-primary">Noise.</span>
+                </h2>
+                <div className="h-px w-16 bg-primary" />
+                <p className="max-w-sm text-sm text-muted-foreground">
+                  Search by meaning across every function, class, and module. Powered by tree-sitter
+                  AST parsing and vector embeddings.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
