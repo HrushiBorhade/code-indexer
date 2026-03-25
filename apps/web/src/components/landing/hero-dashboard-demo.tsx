@@ -190,7 +190,7 @@ function ChatPanel() {
   const { displayed: typedQuery, done: queryDone } = useTypewriter(userQuery, 50, 2000);
   const [streamedLines, setStreamedLines] = useState<string[]>([]);
   const [showThinking, setShowThinking] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!queryDone) return;
@@ -223,7 +223,8 @@ function ChatPanel() {
   }, [queryDone]);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = chatContainerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [streamedLines, showThinking]);
 
   return (
@@ -235,7 +236,7 @@ function ChatPanel() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-hidden p-2">
+      <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-2">
         <div className="flex flex-col gap-2">
           {/* User message */}
           <AnimatePresence>
@@ -296,7 +297,6 @@ function ChatPanel() {
               </div>
             </motion.div>
           )}
-          <div ref={chatEndRef} />
         </div>
       </div>
 
